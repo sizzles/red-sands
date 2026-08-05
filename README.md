@@ -1,18 +1,16 @@
 <div align="center">
 
-<img src="docs/media/hero.jpg" alt="Golden hour over the frontier — sandstone buttes and a mountain range receding into layered haze, seen over a dark treeline" width="100%">
+# BROKEN ROAD
 
-# RED SANDS
+**An open-world survival ride that runs entirely in a browser tab.**
 
-**An open-world western that runs entirely in a browser tab.**
-
-8 km² of eroded frontier · physically-based sky · volumetric weather · horses, hunting and a town
+8 km² of the Cascade Range · glaciated volcanoes · endless rain · a motorcycle you have to keep fuelled
 No downloads. No plugins. No art files — every texture, mesh and sound is generated at runtime.
 
 [![three.js](https://img.shields.io/badge/three.js-r185-000?logo=three.js&logoColor=white)](https://threejs.org)
 [![WebGL2](https://img.shields.io/badge/WebGL-2.0-990000)](https://developer.mozilla.org/docs/Web/API/WebGL2RenderingContext)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-c8a45c)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-5c8374)](LICENSE)
 
 </div>
 
@@ -20,23 +18,15 @@ No downloads. No plugins. No art files — every texture, mesh and sound is gene
 
 ## What this is
 
-A procedurally generated open world — terrain, vegetation, weather, town, animals,
-audio — rendered in WebGL2 and shipped as a **~480 KB brotli** bundle. There is not a
-single `.png`, `.gltf` or `.wav` in the repository. The mountains are hydraulically
-eroded at load, the sky is a physical scattering integral, the rifle report is
-synthesised from noise, and the echo you hear after it is computed by marching the
-actual heightfield for reflectors.
+A procedurally generated open world — volcanic terrain, conifer forest, weather, infected,
+audio — rendered in WebGL2. There is not a single `.png`, `.gltf` or `.wav` in the
+repository. The mountains are real stratovolcano profiles with hydraulically eroded
+flanks, the sky is a physical scattering integral, the engine note is four oscillators
+and a resonant filter, and the rain has been falling for about as long as anyone can
+remember.
 
-<table>
-<tr>
-<td width="50%"><img src="docs/media/town.jpg" alt="The town's main street at golden hour, false-front buildings and boardwalks receding toward mountains"></td>
-<td width="50%"><img src="docs/media/rider.jpg" alt="Third-person view of the rider and horse standing in prairie grass with wildflowers"></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/media/storm.jpg" alt="A storm front over open plains, dark cloud base and rain"></td>
-<td width="50%"><img src="docs/media/night.jpg" alt="Night camp lit by firelight under a star field"></td>
-</tr>
-</table>
+It began life as [an open-world western](#lineage) and was converted. Most of the
+renderer survived that intact; almost none of the world did.
 
 ## Play
 
@@ -45,154 +35,175 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. Click to capture the pointer.
+Open <http://localhost:5173>. Click to capture the pointer. On a phone, just open it —
+touch controls appear on their own.
 
 | | |
 |---|---|
-| **W A S D** | move |
-| **Shift** | run / gallop |
-| **Ctrl** | crouch (quieter — animals hear you) |
-| **E** | mount / dismount · skin a carcass |
+| **W A S D** | move · on the bike, throttle and steering |
+| **Shift** | run · open the throttle |
+| **S** *(riding)* | brake |
+| **Ctrl** | crouch — and crouching is how you stay alive |
+| **E** | get on the bike · loot a stash · skin a carcass |
+| **L** | headlight |
+| **F** | pour a fuel can into the tank |
+| **Q** | use a bandage |
 | **Right mouse** | raise the rifle |
-| **Shift** *(aiming)* | hold breath to steady |
 | **Left mouse** | fire |
 | **R** | reload |
 
-Add `?quality=low|medium|high|ultra` to force a preset.
+Add `?quality=mobile|low|medium|high|ultra` to force a preset, or `?touch=1` to see the
+touch controls on a desktop.
+
+## The loop
+
+Three numbers, and they pull against each other:
+
+- **Fuel.** A full tank is about four minutes of hard riding. Jerry cans are scattered
+  across the map at fixed positions, and there are never quite enough.
+- **Noise.** The infected hunt by sound. Crouching puts you at `0.25`; walking is `1.0`;
+  the bike, with the throttle open, is `14` — fifty-six times louder. The thing that
+  lets you cover ground is the thing that tells everything in the valley where you are,
+  and shutting the engine off to push the last kilometre is a real decision because the
+  numbers make it real.
+- **Ammunition.** Every round you fire is one you had to find, and firing a rifle wakes
+  everything inside 220 metres. A gun is what you use when the plan has already failed.
+
+The cruelty is emergent rather than authored: the model that decides where a nest goes
+and the model that decides where a stash goes are *both* "somewhere sheltered a person
+would have used", so the two correlate, and the best loot in the world is
+disproportionately inside the worst places to be. Nobody wrote that down.
 
 ## Under the hood
 
-**Sky and light.** A Hillaire-style scattering chain — transmittance,
-multiple-scattering and sky-view LUTs in half-float targets, Rayleigh + Mie with
-Cornette-Shanks phase and an ozone absorption layer. The sun follows a NOAA solar
-ephemeris, so it rises in the east on an arc that is correct for the latitude and
-day of year, and its colour comes from the extinction integral along its own slant
-path rather than a keyframed gradient. Earth's shadow and the Belt of Venus fall out
-of a planetary-shadow test in the raymarch. At night, 6,600 stars from a
-deterministic catalogue with power-law magnitudes and blackbody colours rotate about
-the celestial pole, behind a Milky Way built in true galactic coordinates.
+**The mountains.** Four stratovolcanoes and two cinder cones, placed by hand on a
+continuous volcanic crest, because a cone is *concave up* — shallow at the base and
+steepening all the way to the summit — and that is the exact opposite of what noise
+gives you. With `h(r) = H·(1 − r/R)^1.62` the summit slope works out at 31°, the angle
+of repose for fragmental volcanic debris, which is the angle real cones stand at. Radial
+barrancas are deepest at mid-flank; the summit crater is a subtracted bowl, which leaves
+the raised rim for free; and the fractal mountain noise is faded out over the top third
+of every cone, because noise on a cone's shoulders reads as erosion and noise on its
+summit reads as a broken cone.
 
-**Terrain.** Domain-warped ridged multifractal, then **real hydraulic erosion** —
-droplet simulation with sediment capacity, deposition and evaporation — which is what
-carves the dendritic drainage networks and deposits alluvial fans at the range feet.
-Thermal erosion collapses anything past the talus angle into scree. The resulting
-flow-accumulation map then drives where rivers run, where vegetation is densest, and
-where debris collects.
+**The divide.** The crest runs north–south and everything follows from which side of it
+you are on. Air off the Pacific is forced up the west flank, drops its water there, and
+comes down the east side dry — so within thirty kilometres you get temperate rainforest
+on one side and sagebrush, basalt and pumice desert on the other. Aridity is computed
+from the signed distance to the crest, and vegetation, ground colour and scatter all
+inherit the divide without knowing it exists.
 
-**Rendering.** Cascaded shadow maps with PCSS contact hardening and texel-snapped,
-hysteresis-quantised cascade fits; GTAO; TAA with YCoCg variance clipping; SSR;
-raymarched volumetric clouds with a deep-scattering floor (cloud droplets have albedo
-≈ 0.9999 — light entering is redirected, not absorbed, and modelling every octave as
-Beer absorption is what makes big clouds go grey); AgX tonemapping with a strictly
-monotone highlight shoulder.
+**Lava.** A basalt flow field is nearly flat at the kilometre scale and savage at the
+metre scale, with essentially nothing in between. That spectral gap is the whole tell:
+hills have detail at every scale, lava has detail at exactly one, which is why a flow
+looks like nothing from a ridge and is impassable on foot.
 
-**Materials.** 35 procedural PBR surfaces baked across a worker pool at boot, each
-authored in three explicit frequency bands (metres / decimetres / millimetres) with
-cavity dirt and edge wear solved over the finished height field.
+**The bike.** A genuine bicycle model — `yawRate = v·tan(steer)/wheelbase` — so you
+cannot turn at a standstill and the turn radius grows with speed. The lean follows the
+real balance condition, `lean = atan(v·yawRate/g)`, which means it banks by exactly as
+much as the corner demands. Faking the lean off steering input is the usual shortcut and
+it reads as wrong immediately, because the bike then leans hardest where it is turning
+least. Attitude comes from sampling the ground under both contact patches 1.5 m apart,
+which is what stops it burying its nose in a ditch.
 
-**Life.** Animals perceive by sight, hearing *and* scent — stand upwind of a deer
-herd at 125 m and they are unaware; cross to the other side of the wind and they are
-fleeing within a second. Horses have four gaits with correct footfall sequences and
-foot IK. The rider's arms solve to grip sockets on the rifle itself, so the muzzle
-points exactly where the shot goes, on foot or from the saddle.
+**The engine.** Four oscillators through one resonant lowpass. The audible one is a
+sawtooth an octave *below* the firing rate — a 270° twin fires unevenly, and that
+half-rate lope is the entire difference between a big twin and a scooter. Intake noise
+is driven by throttle rather than by rpm, so the motor audibly strains under load and
+goes quiet on a trailing throttle at the same revs. There is a gearbox purely so the
+note *falls* when it changes up.
 
-**Audio.** Entirely synthesised WebAudio — no samples. The rifle is five layers, and
-its echo schedule comes from marching the real terrain for reflectors, so a shot on
-open ground returns at `2d/c` from a ridge 315 m away.
+**The infected.** Packs of three to twelve, spawned around fixed nests. The horde is
+compressed into one mechanic: a freaker that sees you screams, and the scream puts
+everything within 62 m straight into a chase with your position already known — which
+chains through overlapping packs. Waking one group next to two others is how six become
+twenty-five without twenty-five ever being simulated as a group.
+
+**Sky and light.** A Hillaire-style scattering chain — transmittance, multiple-scattering
+and sky-view LUTs, Rayleigh + Mie with Cornette-Shanks phase and an ozone layer. The sun
+follows a NOAA solar ephemeris at 43.9° N, which is worth more than a geography note:
+nine degrees further north than this world used to be is a materially lower sun, longer
+shadows all day, and a golden hour that lasts.
+
+**Rendering.** Cascaded shadow maps with PCSS contact hardening; GTAO; TAA with YCoCg
+variance clipping; SSR; raymarched volumetric clouds with a deep-scattering floor; AgX
+tonemapping with a strictly monotone highlight shoulder.
+
+## On a phone
+
+Detection is a media query, not a user-agent sniff: coarse pointer plus no hover. The
+mobile preset renders at `pixelRatio 0.62` and turns the cloud raymarch off, which
+together are worth more than everything else in the block — a phone GPU's bottleneck is
+fragments and bandwidth, never triangles.
+
+The touch overlay is DOM rather than canvas, so the browser composites it and the render
+loop pays nothing. The movement stick feeds *analog* axes into the player's input (the
+throttle needs the gradient); discrete actions dispatch real `KeyboardEvent`s on
+`window`, so every existing handler — including its priority ordering — runs unchanged
+rather than being reimplemented and drifting.
 
 ## Architecture
 
-Twenty systems on a fixed lifecycle, sharing one frozen context object:
+Twenty-two systems on a fixed lifecycle, sharing one frozen context object:
 
 ```
 src/core/       Engine, Context (the shared contract), Config
 src/materials/  procedural PBR library + worker bake pool
 src/world/      Terrain · Vegetation · Scatter · Town
 src/render/     Sky · Clouds · Water · Lighting · Particles · PostFX
-src/sim/        TimeOfDay · Weather · Physics · Wildlife
-src/player/     Player · Horse · Weapon · CameraRig
+src/sim/        TimeOfDay · Weather · Physics · Wildlife · Freakers · Loot
+src/player/     Player · Bike · Weapon · CameraRig
 src/audio/      synthesised beds + foley
-src/ui/         HUD
+src/ui/         HUD · TouchControls
 ```
 
-Every system implements `init / update / lateUpdate / resize / dispose` and
-communicates only through `ctx` and events. Ownership of every shared field is
-documented in [`docs/CONTRACTS.md`](docs/CONTRACTS.md) — that file is the reason
-twenty independently-written systems compose at all.
+Every system implements `init / update / lateUpdate / resize / dispose` and communicates
+only through `ctx` and events. Ownership of every shared field is documented in
+[`docs/CONTRACTS.md`](docs/CONTRACTS.md).
 
-## How it was judged
+The bike deliberately publishes the same surface the horse it replaced did — `state`,
+`yaw`, `speed01`, `renderPos`, `syncPose()`, `getSaddle()` — so the mount transition,
+the mounted pose, the camera rig and the audio hooks all work against it unchanged.
+Where the horse published stirrup irons, the bike publishes footpegs.
 
-The interesting part of this repo may be the test rig rather than the game. Since
-"does it look good" is not a unit test, the project grew a set of instruments that
-answer it mechanically. They live in [`tools/`](tools) and are documented in
+## How it is judged
+
+The interesting part of this repo may be the test rig rather than the game. Since "does
+it look good" is not a unit test, the project grew instruments that answer it
+mechanically. They live in [`tools/`](tools) and are documented in
 [`docs/PROCESS.md`](docs/PROCESS.md).
 
 | Tool | What it catches |
 |---|---|
-| `capture.mjs` | renders 10 canonical shots headless on the real GPU, deterministically |
+| `capture.mjs` | renders canonical shots headless on the real GPU, deterministically |
 | `metrics.py` | a **regression suite for images** — every defect ever found, permanently asserted |
-| `motion.py` | temporal artifacts: shimmer, LOD pop, ghosting, sun-driven stepping |
+| `motion.py` | temporal artifacts: shimmer, LOD pop, ghosting |
 | `flicker.mjs` | camera-motion flicker binned by true camera-relative distance |
-| `abcompare.py` | blind A/B, and a champion ladder against the previous build |
+| `abcompare.py` | blind A/B against the previous build |
 | `scout.mjs` | adversarial camera — hunts the ugliest frame in the world |
-
-`metrics.py` is the one worth stealing. Every gate in it traces to a defect that was
-once real here: a frame that rendered **three sun discs**; aerial perspective that was
-chromatically *inverted*, so distant ridges came out warmer than the foreground; a
-storm whose darkest pixel was mid-grey. Each was found by eye once, then encoded as an
-assertion so it could never come back silently. Run it against an early build and it
-independently rediscovers them.
-
-A few things it taught, written up in `docs/PROCESS.md`:
-
-- **A gate that has never fired is not proven.** Every threshold here was calibrated
-  by replaying it against the build where the defect was live.
-- **Determinism controls create blind spots.** The capture harness pauses the clock
-  for reproducibility — which made every sun-rate-driven defect invisible until a
-  human found one by playing.
-- **An optimisation can invalidate an instrument.** Removing two blocking readbacks
-  also removed the accidental GPU sync that frame timing depended on; the number kept
-  looking plausible while measuring nothing.
-
-## Deploying
-
-Configured for Vercel out of the box — [`vercel.json`](vercel.json) sets immutable
-caching on fingerprinted assets, `must-revalidate` on the entry document, and baseline
-security headers.
-
-```bash
-npx vercel --prod
-```
-
-If you deploy to a different domain, update the four absolute URLs in `index.html`;
-Open Graph images cannot be relative.
-
-## Building on it
-
-Read [`docs/CONTRACTS.md`](docs/CONTRACTS.md) first — it defines the frozen
-interfaces, the ownership table, and the art direction. Then:
 
 ```bash
 npm run dev            # play it
 npm run capture:fast   # render the canonical shots (1280×720, ~4× cheaper)
-npm run metrics        # run the image regression suite
+npm run metrics        # image regression suite
 npm run motion         # temporal artifact gates
-npm run scout          # adversarial camera sweep
 ```
 
-Two rules keep it coherent: **no external assets** (if you need a texture, generate
-it) and **no `Math.random()`** (use the seeded `rng` from `src/core/Context.js`, or
-captures stop being reproducible and every instrument above stops working).
+Two rules keep it coherent: **no external assets** (if you need a texture, generate it)
+and **no `Math.random()`** (use the seeded `rng` from `src/core/Context.js`, or captures
+stop being reproducible and every instrument above stops working).
 
-## Notes
+## Lineage
 
-Built as an experiment in how far a browser can be pushed with a procedural-only
-budget, and in whether "looks good" can be made into a measurable, regression-tested
-property.
+This was [RED SANDS](https://github.com/gillworks/red-sands), an open-world western, and
+the renderer, the material library, the audio synthesis and the whole test rig are its
+work. The conversion replaced the world: desert became the Cascades, the horse became a
+motorcycle, the weather turned, and something moved into the trees.
 
-Red Dead Redemption 2 was used as the quality bar during development — reference
-frames were kept locally for side-by-side critique and are **not** part of this
-repository. This project is unaffiliated with and unendorsed by Rockstar Games.
+*Days Gone* was the design reference for that conversion in the same way Red Dead
+Redemption 2 was the quality bar for the original. This project is unaffiliated with and
+unendorsed by Sony Interactive Entertainment, Bend Studio or Rockstar Games, and shares
+no names, characters or assets with either game.
 
 ## License
 

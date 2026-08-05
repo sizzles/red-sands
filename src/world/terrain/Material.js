@@ -35,23 +35,37 @@ const MICRO_SCALE = 0.33;
 
 /**
  * Art direction lives here. Whatever ProcTextures hands over, each terrain
- * layer is re-tinted to a target mid-tone drawn from the late-19th-century
- * western palette: bleached ochre, sage green (desaturated and yellow-shifted,
- * never emerald), dust grey and oxidised red rock. Per-texel variation is
- * preserved — only the mean is moved.
+ * layer is re-tinted to a target mid-tone. Per-texel variation is preserved —
+ * only the mean is moved.
  *
- * The two grass tints sit at ~0.21 saturation with hues of 80deg and 45deg —
- * sage and straw, not lawn. Pass 1 measured 0.43 on screen at a single flat
- * hue, which §5 rejects outright; the pair now measures ~0.30 on screen with
- * the field mixed between them by the macro mask.
+ * The palette is the wet side of the Cascades under cloud: near-black basalt,
+ * blue-green conifer shadow, wet duff, and pumice so pale it is almost the only
+ * bright thing in the world that is not snow.
+ *
+ * Two things are counterintuitive and both matter:
+ *
+ * DARKER, NOT GREENER. The instinct when converting a desert to a rainforest is
+ * to crank saturation, and it is wrong — the metrics gate caps on-screen green
+ * saturation at 0.34 and it is right to. Wet temperate forest does not read as
+ * green because it is *saturated*; it reads as green because it is DARK and
+ * everything around it is dark too. So the ground tints here are ~15% darker
+ * in value than the western palette they replace at almost the same saturation
+ * (grass_wet is 0.216 against the old sage's 0.212), and the effect is
+ * dramatically wetter.
+ *
+ * GREY ROCK, NOT RED. The old rock tint was oxidised sandstone at 0.298
+ * saturation, which is a desert mineralogy — iron that has had ten thousand dry
+ * years to rust. Andesite and basalt are young, grey and barely oxidised at
+ * all, so rock drops to 0.12 and scree to 0.08. Losing that red is the single
+ * biggest change in the palette, because rock is most of what a mountain is.
  */
 const LAYER_TINT = [
-  [105, 113, 89],    // grass_prairie — sage, sat 0.212, hue 80deg
-  [146, 138, 113],   // grass_dry     — bleached straw, sat 0.226, hue 45deg
-  [128, 117, 104],   // dirt_dry      — dusty ochre, sat 0.188
-  [114, 93, 80],     // rock_cliff    — oxidised red rock, sat 0.298, darker
-  [110, 105, 99],    // scree         — dark gravel lag / talus, sat 0.100
-  [151, 144, 129],   // sand_fine     — pale bleached, sat 0.146
+  [84, 97, 76],      // grass_prairie — wet moss and needle duff, sat 0.216
+  [138, 130, 108],   // grass_dry     — cured bunchgrass, rain-shadow side
+  [96, 86, 74],      // dirt_dry      — dark volcanic loam, sat 0.229
+  [98, 93, 86],      // rock_cliff    — andesite grey-brown, sat 0.122
+  [86, 83, 79],      // scree         — basalt scoria talus, sat 0.081
+  [163, 158, 149],   // sand_fine     — pumice and ash, pale and neutral
   [222, 226, 234],   // snow
 ];
 
@@ -212,6 +226,7 @@ uniform vec4 uCore;
 uniform float uLayerScale[7];
 uniform float uLayerDetail[7];
 uniform vec4 uSurf;        // wetness, snowCover, snowLine, normalStrength
+uniform vec2 uPerma;       // permanent (glacial) snowline metres, strength 0..1
 uniform vec2 uDetailFade;  // near, far
 uniform vec4 uCloudSh;     // strength, 1/scale, offsetX, offsetZ
 /* eye-level ground layer — see terrain/GroundDetail.js */
@@ -401,7 +416,25 @@ void terrainSurface() {
     * smoothstep(uSurf.z - 190.0, uSurf.z + 120.0, wp.y)
     * (1.0 - flow * 0.65)
     * clamp(0.45 + mSml * 1.1, 0.0, 1.35);
-  snowW = clamp(snowW, 0.0, 1.0);
+
+  /*
+   * PERMANENT SNOW. The seasonal term above is driven entirely by the weather,
+   * so on a clear warm day every cone in the range came out bare rock to the
+   * summit — and a Cascade volcano without its cap is unrecognisable. Glaciers
+   * do not care what the weather did this week: above the equilibrium line
+   * more falls each year than melts, and the ice is simply always there. So
+   * this term is altitude-only, and it takes the MAX with the seasonal layer
+   * rather than adding, or a snowstorm would double-cover ground that is
+   * already solid ice.
+   *
+   * It still respects upness, because even at 3000 m a vertical face sheds
+   * its snow — the rock bands showing through a snowfield on the steep side of
+   * a summit are most of what gives the cap its shape.
+   */
+  float perma = uPerma.y * upness
+    * smoothstep(uPerma.x - 130.0, uPerma.x + 170.0, wp.y)
+    * clamp(0.55 + mSml * 0.9, 0.0, 1.25);
+  snowW = clamp(max(snowW, perma), 0.0, 1.0);
   for (int i = 0; i < 6; i++) w[i] *= (1.0 - snowW);
   w[6] = snowW;
 

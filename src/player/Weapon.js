@@ -751,6 +751,16 @@ export class Weapon {
     let animal = null;
     if (W && W.raycastAnimals) animal = W.raycastAnimals(origin, dir, MAX);
 
+    /*
+     * The infected are resolved on the same footing as game animals — nearest
+     * hit along the ray wins — rather than as a special case that pre-empts
+     * everything else. That matters: a runner between you and a deer should
+     * eat the round, and so should a deer between you and a runner.
+     */
+    const FK = ctx.get('freakers');
+    let freak = null;
+    if (FK && FK.raycast) freak = FK.raycast(origin, dir, MAX);
+
     const law = this.player.wanted;
     let npc = null;
     if (law) {
@@ -763,7 +773,20 @@ export class Weapon {
       try { ground = T.raycast(origin, dir, MAX); } catch (e) { ground = null; }
     }
 
-    // nearest of the three wins
+    // nearest of the four wins
+    if (freak && animal && animal.distance < freak.distance) freak = null;
+    if (freak && ground && ground.distance < freak.distance) freak = null;
+    if (freak && npc && npc.distance < freak.distance) freak = null;
+    if (freak) {
+      const res = FK.applyHit(freak, 1);
+      this.lastShot = {
+        hit: true, freaker: true, species: freak.species, part: freak.part,
+        killed: !!(res && res.killed), distance: freak.distance,
+        point: freak.point.clone(),
+      };
+      this._impact(freak, res);
+      return;
+    }
     if (npc && animal && animal.distance < npc.distance) npc = null;
     if (npc && ground && ground.distance < npc.distance) npc = null;
     if (npc) {

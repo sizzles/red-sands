@@ -30,7 +30,7 @@ const THIN_CULL = 240;
 const _dbSize = new THREE.Vector2();
 
 /**
- * Town — the settlement of RED SANDS, and the camp.
+ * Town — the mill town, and the camp. Emptied, not destroyed.
  *
  * PASS-1 FINDING (critical, town_street): "There is no town. […] Not one
  * building, fence, water trough, boardwalk or wagon." This file is the answer.

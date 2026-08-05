@@ -534,8 +534,29 @@ export class Player {
       if (e.repeat) return;
       if (e.code !== 'KeyE') return;
       if (this.skinning) return;              // movement cancels it, not E
-      if (this.pickup) this._takePickup();
-      else if (this.carcass) this._beginSkin();
+      /*
+       * E is overloaded four ways — take a dropped pelt, loot a stash, skin a
+       * carcass, get on the bike — so the order here IS the priority, and it
+       * runs nearest-thing-first. Looting is placed above skinning and below
+       * a pickup at your feet; the bike is resolved last, in Bike's own
+       * listener, which bails when this one has already claimed the press.
+       */
+      if (this.pickup) { this._takePickup(); this._actionClaimed = this.ctx.time.frame; return; }
+      const loot = this.ctx.get('loot');
+      const stash = loot && loot.nearest ? loot.nearest() : null;
+      if (stash) {
+        /* Only if it is genuinely the nearest thing — walking past a crate on
+           the way to your bike should not stop you getting on. */
+        const ride = this.ctx.get('bike');
+        const ds = this.state.position.distanceTo(stash.pos);
+        const db = ride && ride.state ? this.state.position.distanceTo(ride.state.position) : 1e9;
+        if (ds <= db) {
+          loot.collect(stash);
+          this._actionClaimed = this.ctx.time.frame;
+          return;
+        }
+      }
+      if (this.carcass) { this._beginSkin(); this._actionClaimed = this.ctx.time.frame; }
     };
     this._onMouseMove = (e) => {
       if (document.pointerLockElement !== canvas) return;
@@ -567,6 +588,24 @@ export class Player {
       && !(this.weapon && this.weapon.aim01 > 0.2);
     i.jump = k.has('Space');
     i.crouch = k.has('ControlLeft') || k.has('KeyC');
+
+    /*
+     * TOUCH. The on-screen stick contributes ANALOG axes rather than
+     * synthesising key presses, and the difference matters most on the bike:
+     * `input.f` is the throttle there, so a stick that could only ever report
+     * 0 or 1 would give a machine with no part-throttle at all. Discrete
+     * actions (E, R, fire) do go through synthetic events — see
+     * ui/TouchControls.js for why the two are handled differently.
+     *
+     * It takes the larger magnitude rather than summing, so a player with both
+     * a keyboard and a touchscreen cannot end up at double deflection.
+     */
+    const t = this.touch;
+    if (t && (t.active || t.sprint)) {
+      if (Math.abs(t.f) > Math.abs(i.f)) i.f = t.f;
+      if (Math.abs(t.r) > Math.abs(i.r)) i.r = t.r;
+      if (t.sprint) i.sprint = !(this.weapon && this.weapon.aim01 > 0.2);
+    }
   }
 
   /* --------------------------------------------------- fixed-step movement */
@@ -964,9 +1003,9 @@ export class Player {
     if (!W || !W.nearestCarcass) return;
     const c = W.nearestCarcass(this.state.position, 2.6);
     if (!c) return;
-    const horse = this.ctx.get('horse');
-    if (horse && horse.state) {
-      const dh = this.state.position.distanceTo(horse.state.position);
+    const ride = this.ctx.get('bike');
+    if (ride && ride.state) {
+      const dh = this.state.position.distanceTo(ride.state.position);
       if (dh < 4.8 && dh < this.state.position.distanceTo(c.agent.pos)) return;
     }
     this.carcass = c;
@@ -1788,7 +1827,17 @@ export class Player {
     const prevBob = this._rideBob;
     this._rideBob = prevBob + (bob * 0.42 - prevBob) * Math.min(1, h * 14);
     const rock = Math.sin(ph * (horse.gait === 'walk' ? 1 : 2) - 0.5) * (0.020 + 0.045 * sp01) * gaitOn;
-    const leanBack = sp01 * 0.16;              // sit back at the gallop
+    /*
+     * A HORSEMAN SITS BACK AT SPEED; A MOTORCYCLIST TUCKS FORWARD.
+     *
+     * On a galloping horse the rider drives the seat down and back into the
+     * cantle. On a bike at 90 km/h you are folding over the tank to get out of
+     * the wind, and if you did not the wind would fold you. The sign of this
+     * one term is therefore inverted for a vehicle — everything downstream
+     * (spine, chest, neck, head) already reads it, so flipping it here is the
+     * whole postural difference and it costs one line.
+     */
+    const leanBack = s.vehicle ? -sp01 * 0.26 : sp01 * 0.16;
 
     /*
      * ---- BLADED STANCE, IN THE SADDLE -----------------------------------
@@ -1843,12 +1892,37 @@ export class Player {
       this.weapon.update(dt || 1 / 60);
     }
 
-    /* ---- arms: rein hands over the horn ---------------------------------- */
-    for (const [L, sgn] of [['L', 1], ['R', -1]]) {
-      rig.rot('clav' + L, -0.02, 0, sgn * 0.02);
-      rig.rot('arm' + L, -0.30 + rock * 0.25 - leanBack * 0.20, sgn * 0.06, sgn * 0.15);
-      rig.rot('fore' + L, -0.98 - rock * 0.30, 0, sgn * 0.20);
-      rig.rot('hand' + L, 0.18, 0, -sgn * 0.16);
+    /* ---- arms ------------------------------------------------------------ */
+    if (s.gripL && !(this.weapon && this.weapon.gripBlend > 0.004)) {
+      /*
+       * HANDS ON THE BARS, and solved onto the grips rather than posed at
+       * them. The bars move — they steer, and they rise and fall with the
+       * fork — so a fixed arm pose is wrong the moment the rider does
+       * anything. Two-bone IK onto the published grip points means the arms
+       * track the steering for free, which is most of what makes the rider
+       * look like they are riding the bike rather than being carried by it.
+       *
+       * The elbow poles OUT and DOWN, because that is where a rider's elbows
+       * are; poled forward (the default for a reaching arm) puts them through
+       * the tank.
+       */
+      rig.sync();
+      for (const [L, sgn] of [['L', 1], ['R', -1]]) {
+        rig.rot('clav' + L, -0.04 - sp01 * 0.05, 0, sgn * 0.03);
+        const grip = sgn > 0 ? s.gripL : s.gripR;
+        _pole.set(sgn * 0.85, -0.45, -0.25).applyQuaternion(this.group.quaternion).normalize();
+        rig.ik2('arm' + L, 'fore' + L, PROP.armL1, PROP.armL2, grip, _pole);
+        /* Wrist rolled over the grip, and the throttle hand a little further
+           over than the clutch hand. */
+        rig.rot('hand' + L, 0.10, 0, -sgn * (sgn < 0 ? 0.30 : 0.20));
+      }
+    } else {
+      for (const [L, sgn] of [['L', 1], ['R', -1]]) {
+        rig.rot('clav' + L, -0.02, 0, sgn * 0.02);
+        rig.rot('arm' + L, -0.30 + rock * 0.25 - leanBack * 0.20, sgn * 0.06, sgn * 0.15);
+        rig.rot('fore' + L, -0.98 - rock * 0.30, 0, sgn * 0.20);
+        rig.rot('hand' + L, 0.18, 0, -sgn * 0.16);
+      }
     }
 
     const env = this.ctx.env;
@@ -1874,13 +1948,25 @@ export class Player {
     for (const [L, sgn] of [['L', 1], ['R', -1]]) {
       // widen the hip so the thighs sit outside the saddle skirt rather than
       // through it, then straddle: knee forward and out, ankle in the iron
-      rig.trs('thigh' + L, sgn * 0.030, -0.015, 0.015);
+      rig.trs('thigh' + L, sgn * (s.vehicle ? 0.012 : 0.030), -0.015, 0.015);
       const iron = sgn > 0 ? s.stirrupL : s.stirrupR;
       _v.copy(iron).addScaledVector(UP, ANKLE_LIFT).addScaledVector(_v3, -0.055);
-      // Knee mostly OUTWARD, only a little forward: the iron hangs almost
-      // under the hip, so a strongly forward pole throws the knee onto the
-      // horse's shoulder and the thigh through the saddle's front jockey.
-      _pole.copy(_v3).multiplyScalar(0.55).addScaledVector(_v2, sgn * 0.92).normalize();
+      if (s.vehicle) {
+        /*
+         * On a bike the knee goes FORWARD, into the tank, not out to the side.
+         * A rider grips the machine between their knees — it is how they stay
+         * on it through a corner — so the pole is mostly along the bike's
+         * forward axis with only enough lateral component to clear the frame.
+         * Using the equestrian pole here splays the knees out over the
+         * cylinder heads and reads as a man riding a barrel.
+         */
+        _pole.copy(_v3).multiplyScalar(1.05).addScaledVector(_v2, sgn * 0.30).normalize();
+      } else {
+        // Knee mostly OUTWARD, only a little forward: the iron hangs almost
+        // under the hip, so a strongly forward pole throws the knee onto the
+        // horse's shoulder and the thigh through the saddle's front jockey.
+        _pole.copy(_v3).multiplyScalar(0.55).addScaledVector(_v2, sgn * 0.92).normalize();
+      }
       rig.ik2('thigh' + L, 'shin' + L, PROP.legL1, PROP.legL2, _v, _pole);
       // boot flat in the iron with the heel down, toe turned out a little
       _sole.set(0, -1, 0).applyAxisAngle(_v2, 0.24).normalize();

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Regions, timePhrase } from './Regions.js';
 import { PauseMenu } from './PauseMenu.js';
-import { MOUNT_RANGE } from '../player/Horse.js';
+import { MOUNT_RANGE } from '../player/Bike.js';
 
 /**
  * ============================================================================
@@ -71,6 +71,10 @@ export class HUD {
       // the law, and the skinning progress ring. Both are absent until they
       // are not, and both fade out completely — no empty slots, no chrome.
       wanted: 0, skin: 0,
+      /* The machine (fuel, gear, speed) while riding, and the threat readout
+       * while anything is actually hunting. Same discipline as everything
+       * else here: neither exists when it has nothing to say. */
+      ride: 0, threat: 0,
     };
     /** Hit feedback on the reticle. -1 = nothing has been hit. */
     this._hitT = -1;
@@ -335,6 +339,12 @@ export class HUD {
     }
     const coresWanted = (this.health < 0.995 || this.stamina < 0.995 || this._coresHold > 0) ? 1 : 0;
 
+    /* --- the horde ------------------------------------------------------ */
+    const FK = ctx.get('freakers');
+    this._hunting = FK ? (FK.hunting || 0) : 0;
+    this._noise = FK ? (FK.noise || 0) : 0;
+    this._threatHold = this._hunting > 0 ? 2.6 : Math.max(0, (this._threatHold || 0) - dt);
+
     /* --- contextual prompt from nearby interactables -------------------- */
     this._promptT = Math.max(0, this._promptT - dt);
     if (this._promptT <= 0) this._scanInteractables();
@@ -396,11 +406,21 @@ export class HUD {
       wanted: (!paused && this._law
         && (this._law.level > 0 || this._law.state === 'warning')) ? 1 : 0,
       skin: (!paused && this._skin) ? 1 : 0,
+      ride: (!paused && ctx.player.mode === 'mounted') ? 1 : 0,
+      /*
+       * The threat gauge is the one piece of chrome allowed to appear
+       * unbidden, because the information it carries — something has seen you
+       * — is the only thing in this game a player cannot work out for
+       * themselves in time to act on it. It holds for a moment after the last
+       * one loses you, so it does not flicker while a pack circles.
+       */
+      threat: (!paused && this._threatHold > 0) ? 1 : 0,
     };
     const rate = {
       compass: [3.6, 1.1], cores: [4.5, 0.9], prompt: [7, 3], title: [1, 1],
       hint: [1.2, 3], notice: [6, 2], keys: [1.6, 0.8], lock: [1.8, 1.6],
       weapon: [8, 1.6], reticle: [12, 9], wanted: [5, 1.0], skin: [9, 5],
+      ride: [5, 1.4], threat: [9, 0.8],
     };
     for (const k in this.a) {
       const t = target[k];
@@ -459,6 +479,13 @@ export class HUD {
       this._promptT = 0.3;
       return;
     }
+    const loot = ctx.get('loot');
+    const stash = loot && loot.nearest ? loot.nearest() : null;
+    if (stash) {
+      this._prompt = { key: 'E', label: stash.kind.label };
+      this._promptT = 0.3;
+      return;
+    }
     if (pl && pl.carcass) {
       this._prompt = { key: 'E', label: `Skin ${pl.carcass.species}` };
       this._promptT = 0.3;
@@ -469,8 +496,8 @@ export class HUD {
       // furniture, and furniture is exactly what this HUD is trying not to be.
       if ((ctx.player.speed01 || 0) < 0.06) best = { key: 'E', label: 'Dismount' };
     } else {
-      const horse = ctx.get('horse');
-      if (horse && horse.state) consider(horse.state.position, 'E', 'Mount', MOUNT_RANGE);
+      const bike = ctx.get('bike');
+      if (bike && bike.state) consider(bike.state.position, 'E', 'Ride', MOUNT_RANGE);
       const fire = ctx.poi.get('camp_fire');
       if (fire) consider(fire.pos || fire, 'E', 'Warm yourself', 4.2);
     }
@@ -536,6 +563,8 @@ export class HUD {
     if (this.a.reticle > 0.004) this._drawReticle(c, W, H, s, this.a.reticle * G);
     if (this.a.weapon > 0.004) this._drawWeapon(c, W, H, s, this.a.weapon * G);
     if (this.a.cores > 0.004) this._drawCores(c, W, H, s, this.a.cores * G);
+    if (this.a.ride > 0.004) this._drawRide(c, W, H, s, this.a.ride * G);
+    if (this.a.threat > 0.004) this._drawThreat(c, W, H, s, this.a.threat * G);
     if (this.a.title > 0.004) this._drawTitle(c, W, H, s, this.a.title * G);
     /* The three centred lines are a stack, not three fixed positions. Each one
      * that draws pushes the ceiling up for the next, so when the control hints
@@ -804,15 +833,16 @@ export class HUD {
      */
     const rows = mounted
       ? [
-        [['W', 'RIDE', 'ride'], ['SHIFT', 'SPUR ON', 'spur'],
-          ['A D', 'REIN', 'rein'], ['E', 'DISMOUNT', 'mount']],
-        [['RMB', 'AIM', 'aim'], ['LMB', 'FIRE', 'fire'], ['R', 'RELOAD', 'reload']],
+        [['W', 'THROTTLE', 'ride'], ['SHIFT', 'OPEN IT UP', 'spur'],
+          ['A D', 'STEER', 'rein'], ['S', 'BRAKE', 'brake']],
+        [['E', 'GET OFF', 'mount'], ['L', 'HEADLIGHT', 'light'],
+          ['F', 'FUEL UP', 'fuel']],
       ]
       : [
         [['W A S D', 'MOVE', 'move'], ['SHIFT', 'RUN', 'run'],
-          ['CTRL', 'CROUCH', 'crouch'], ['E', 'MOUNT', 'mount']],
+          ['CTRL', 'CROUCH', 'crouch'], ['E', 'RIDE / LOOT', 'mount']],
         [['RMB', 'AIM', 'aim'], ['LMB', 'FIRE', 'fire'],
-          ['SHIFT', 'HOLD BREATH', 'breath'], ['R', 'RELOAD', 'reload']],
+          ['R', 'RELOAD', 'reload'], ['Q', 'BANDAGE', 'meds']],
       ];
     /* Each hint fades on its own once its control has been used, and the rows
      * are bottom-anchored so the survivors slide down into the vacancy rather
@@ -1188,6 +1218,90 @@ export class HUD {
     const x0 = W - 42 * s - gap;
     this._arc(c, x0, y, r, this.health, BLOOD, A, s);
     this._arc(c, x0 + gap, y, r, this.stamina, GOLD, A, s);
+  }
+
+  /**
+   * THE MACHINE.
+   *
+   * A fuel arc in the same language as the health and stamina arcs — one more
+   * open ring in the same row, so it reads as another thing about your
+   * condition rather than as a vehicle dashboard bolted onto the corner. Speed
+   * and gear sit beside it in small caps.
+   *
+   * The arc goes red below a fifth of a tank and starts breathing below a
+   * tenth. That is the only alarm in this HUD, and it is spent here because
+   * running dry is the one failure state in the game that is entirely
+   * preventable and entirely your own fault.
+   */
+  _drawRide(c, W, H, s, A) {
+    const bike = this.ctx.get('bike');
+    if (!bike || !bike.status) return;
+    const st = bike.status();
+    const r = 16 * s;
+    const gap = 50 * s;
+    const y = H - 46 * s;
+    const x = W - 42 * s - gap * 2;
+
+    let colour = GOLD;
+    let a = A;
+    if (st.fuel < 0.20) {
+      colour = BLOOD;
+      if (st.fuel < 0.10) a *= 0.55 + 0.45 * Math.abs(Math.sin(this._elapsed * 3.4));
+    }
+    this._arc(c, x, y, r, st.fuel, colour, a, s);
+    this._text(c, 'FUEL', x, y + r + 11 * s, {
+      size: 7.5 * s, colour: INK_DIM, alpha: 0.5 * A, align: 'center', track: 0.16,
+    });
+
+    /* Speed and gear. Big number, small unit — a rider glances at this, they
+       do not read it. */
+    const kph = Math.max(0, Math.round(st.speedKph));
+    this._text(c, String(kph), x - gap * 0.92, y + 5 * s, {
+      size: 19 * s, colour: INK, alpha: 0.78 * A, align: 'center',
+    });
+    this._text(c, st.running ? `KM/H · ${st.gear}` : 'STALLED', x - gap * 0.92, y + 18 * s, {
+      size: 7.5 * s, colour: st.running ? INK_DIM : BLOOD,
+      alpha: 0.55 * A, align: 'center', track: 0.14,
+    });
+  }
+
+  /**
+   * HOW MANY ARE COMING.
+   *
+   * Deliberately imprecise. It shows a count only up to three and then stops
+   * counting, because the difference between four and eleven is not a number a
+   * player can act on — the decision at that point is "leave", and it is the
+   * same decision either way. What it does show precisely is how loud you are
+   * being, which IS actionable: shut the engine off, or crouch.
+   */
+  _drawThreat(c, W, H, s, A) {
+    const n = this._hunting || 0;
+    const x = W * 0.5;
+    const y = 54 * s;
+    const label = n === 0 ? 'LOST YOU' : (n > 3 ? 'SWARM' : (n > 1 ? 'HUNTED' : 'SEEN'));
+    const pulse = n > 0 ? 0.72 + 0.28 * Math.abs(Math.sin(this._elapsed * (n > 3 ? 5.2 : 2.6))) : 0.5;
+    this._text(c, label, x, y, {
+      size: 12 * s, colour: n > 0 ? HIT_RED : INK_DIM,
+      alpha: (n > 3 ? 0.92 : 0.78) * pulse * A, align: 'center', track: 0.30,
+    });
+    /* Tally marks, not a number: three strokes read faster than a digit and
+       stop at three, which is the point. */
+    if (n > 0) {
+      const marks = Math.min(3, n);
+      const wS = 5 * s;
+      for (let i = 0; i < marks; i++) {
+        const mx = x - (marks - 1) * wS + i * wS * 2;
+        this._hairline(c, mx, y + 7 * s, mx, y + 14 * s, HIT_RED, 0.7 * pulse * A, Math.max(1, 1.6 * s));
+      }
+    }
+    /* Noise meter — the one number worth being precise about. */
+    const noise = Math.min(1, (this._noise || 0) / 14);
+    if (noise > 0.02) {
+      const bw = 74 * s, bx = x - bw * 0.5, by = y + 21 * s;
+      this._hairline(c, bx, by, bx + bw, by, INK_DIM, 0.20 * A, Math.max(1, 1.4 * s));
+      this._hairline(c, bx, by, bx + bw * noise, by,
+        noise > 0.4 ? HIT_ORANGE : INK, 0.68 * A, Math.max(1, 1.8 * s));
+    }
   }
 
   _arc(c, x, y, r, v, colour, A, s) {

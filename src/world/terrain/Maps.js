@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { fbmTile, fbm, fbm01, smoothstep, clamp } from './Noise.js';
+import { fbmTile, fbm, fbm01, smoothstep, clamp, mix } from './Noise.js';
 
 /**
  * Derived maps: surface normals, sky occlusion, long-range sun shadowing, and
@@ -296,12 +296,17 @@ export function bakeSplat(field, h, acc, wet, res, cellSize, waterLevel, half = 
       /* --- rock: steep ground, hard strata, high mountains */
       const steep = smoothstep(0.50, 0.95, slope);          // 27deg .. 44deg
       let rock = steep * (0.62 + hard * 0.6);
-      /* Butte and massif faces are bedrock from about 15 degrees up — there is
-         nowhere for soil to stay on a retreating scarp. Pass 1 required 27deg
-         everywhere, which is above the average slope of the whole range, so
-         the mountains painted as sand. */
-      rock += smoothstep(0.26, 0.58, slope) * wb * 1.25;
-      rock += smoothstep(0.30, 0.66, slope) * wm * 1.05;
+      /*
+       * LAVA IS ROCK AT ANY ANGLE. Every other bedrock term here is gated on
+       * slope, on the sound principle that soil stays on anything gentle — but
+       * a young basalt flow is dead flat AND completely bare, because nothing
+       * has had time to weather it into anything a plant can hold onto. Gate
+       * the flow fields on slope like everything else and they paint as dirt
+       * and sand, which is exactly backwards: they are the darkest, barest,
+       * most obviously rock surface in the world.
+       */
+      rock += wb * 1.15;
+      rock += smoothstep(0.26, 0.60, slope) * wm * 1.15;
       rock += smoothstep(0.34, 0.70, slope) * wf * 0.6;
       rock += smoothstep(330, 560, altJ) * 0.40 * wm;
       /* bedrock exposed at every ridge break — convex ground sheds its soil */
@@ -320,7 +325,7 @@ export function bakeSplat(field, h, acc, wet, res, cellSize, waterLevel, half = 
       let scree = midSlope
         * (0.22 + smoothstep(0.48, 0.86, concave) * 1.05)
         * (0.35 + smoothstep(140, 430, altJ) * 0.9)
-        * (wm * 1.45 + wf * 0.65 + wb * 0.85 + 0.10);
+        * (wm * 1.45 + wf * 0.65 + wb * 0.55 + 0.10);
       /* debris shed into the gullies of a range — this is what breaks a massif
          out of one flat rock colour into rock, talus and washed-in soil */
       scree += smoothstep(0.30, 0.62, slope) * smoothstep(0.44, 0.88, concave)
@@ -353,9 +358,24 @@ export function bakeSplat(field, h, acc, wet, res, cellSize, waterLevel, half = 
       const flat = 1 - smoothstep(0.12, 0.46, slope);
       const moist = clamp(1 - arid + flow01 * 0.5 + wv * 0.35
         + (1 - smoothstep(waterLevel + 4, waterLevel + 70, alt)) * 0.3, 0, 1.4);
-      const grassTotal = clamp(flat * (0.35 + moist * 0.85) * (1 - rock * 0.95), 0, 1);
-      const dryness = clamp(arid * 1.25 + smoothstep(120, 380, altJ) * 0.35
-        - flow01 * 0.55 - wv * 0.3 + (patchA - 0.5) * 0.75, 0, 1);
+      /*
+       * West of the crest this is temperate rainforest floor — moss, fern and
+       * needle duff — and it covers ground far steeper than prairie grass ever
+       * would, because it is growing on a soil mat rather than in it. So the
+       * flatness requirement is relaxed by how wet the site is.
+       */
+      const wetSide = 1 - arid;
+      const grassFlat = mix(flat, 1 - smoothstep(0.30, 0.78, slope), wetSide * 0.7);
+      const grassTotal = clamp(grassFlat * (0.35 + moist * 0.95) * (1 - rock * 0.95), 0, 1);
+      /*
+       * Dry-grass share. In the rain shadow this is genuine cured bunchgrass;
+       * on the wet side almost nothing cures, so aridity drives it much harder
+       * than altitude does — the old weighting turned every ridge above 380 m
+       * golden, which on this side of the mountains is simply not a thing that
+       * happens.
+       */
+      const dryness = clamp(arid * 1.55 + smoothstep(560, 900, altJ) * 0.40
+        - flow01 * 0.55 - wv * 0.3 + (patchA - 0.5) * 0.65, 0, 1);
       let gp = grassTotal * (1 - dryness);
       let gd = grassTotal * dryness;
 

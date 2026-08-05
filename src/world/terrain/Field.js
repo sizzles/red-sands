@@ -1,26 +1,42 @@
 import {
-  noise2, fbm, fbm01, ridged, billow, smoothstep, clamp, mix, terrace,
+  noise2, fbm, fbm01, ridged, billow, smoothstep, clamp, mix,
   polylineDist, polylineMetrics,
 } from './Noise.js';
 
 /**
- * Landform synthesis.
+ * Landform synthesis — the Cascade Range, central Oregon.
  *
  * The world is deliberately *composed*, not left to noise:
  *
  *      N (-Z)
  *        ┌──────────────────────────────┐
- *        │  timber   ▲▲▲ MASSIF ▲▲▲     │   high mesa/butte country east,
- *        │  foothills   ▲▲▲▲▲▲          │   grassland and the river basin
- *        │      ~~~ river ~~~   ▄▄ mesa │   through the middle and west,
- *   W    │  ROLLING GRASSLAND   ▄▄▄▄▄   │   dry flats to the south.
- *        │      ~~~        dry flat ▄▄  │
- *        │  low basin      ░░░░░░░      │
+ *        │  wet timber   ▲▲ CREST ▲▲    │   a volcanic spine of glaciated
+ *        │  ridges        ▲▲▲▲▲▲       │   stratocones runs NNE–SSW through
+ *        │      ~~~ river ~~~  ≈≈ lava  │   the east; west of it is wet
+ *   W    │  TIMBERED VALLEY    ≈≈≈≈≈   │   conifer ridge-and-valley country,
+ *        │   lake  ~~~     pumice ░░░   │   east of it the rain shadow: basalt
+ *        │  timber         ░░░░░░       │   flows and pumice desert.
  *        └──────────────────────────────┘
+ *
+ * The crest is the organising fact of the map. It makes the mountains, it makes
+ * the weather (everything west of it is wet, everything east of it is not), and
+ * it is what the eye reads from anywhere in the world — you can always see
+ * where you are relative to the volcanoes.
  *
  * Region boundaries are domain-warped so nothing reads as an authored blob, and
  * the river's long profile is derived from the terrain it actually crosses
  * (sampled, then forced monotonically downhill) so the valley always drains.
+ *
+ * REGION KEYS ARE LOAD-BEARING and kept from the original composition, because
+ * the splat baker, the ecology and the scatter all key off them. What they MEAN
+ * has changed:
+ *
+ *   mount  alpine — the cones and the crest above the treeline
+ *   foot   timbered ridges, the bulk of the map
+ *   bad    lava beds: basalt flow fields, not sedimentary mesas
+ *   sand   pumice and ash flats — pale, flat, sterile
+ *   plain  valley floor: meadow, marsh and second-growth
+ *   arid   how far into the rain shadow you are, 0 west .. 1 east
  */
 
 export const RIVER_PTS = [
@@ -40,6 +56,143 @@ function ellipse(x, z, cx, cz, rx, rz, rot) {
   return Math.sqrt(u * u + v * v);
 }
 
+/* ------------------------------------------------------------------- cones */
+
+/**
+ * THE VOLCANOES.
+ *
+ * A stratovolcano is *concave up*: shallow at the base, steepening all the way
+ * to the summit, which is the exact opposite of what noise gives you and the
+ * whole reason these are placed by hand rather than left to the fractal. With
+ *
+ *      h(r) = H · (1 − r/R)^p
+ *
+ * the surface slope is (H·p/R)·(1 − r/R)^(p−1): zero where the flank runs out
+ * onto the plain and maximal at the summit. At H = 940 m, R = 2500 m, p = 1.62
+ * the summit slope works out at 0.61 ≈ 31°, which is the angle of repose for
+ * fragmental volcanic debris and therefore the angle real cones actually stand
+ * at. Get that number wrong in either direction and the silhouette stops
+ * reading as a volcano from any distance.
+ *
+ * Two more details do most of the recognition work:
+ *
+ *   BARRANCAS  the radial erosion gullies that stripe every flank. They are
+ *              deepest at mid-flank — nothing has had room to concentrate at
+ *              the summit and the fans bury them at the foot — so the profile
+ *              is a u(1−u) hump, and their angular positions are jittered by
+ *              noise so the cone is not a cake decoration.
+ *   CRATER     subtracting a smooth bowl from a profile that peaks at r = 0
+ *              produces the raised rim for free.
+ *
+ * `cinder` cones are the small ones: steeper, far smaller, and with a crater
+ * enormous relative to the cone, because that is what a single-eruption scoria
+ * pile looks like once its throat has drained.
+ */
+const CONES = [
+  { x: 1380, z: -2840, h: 900, r: 2560, cr: 168, cd: 96, gully: 1.00, gN: 19 },
+  { x: 2700, z: -1400, h: 742, r: 2080, cr: 122, cd: 58, gully: 0.92, gN: 17 },
+  { x: 1900, z: -160, h: 648, r: 1760, cr: 104, cd: 44, gully: 0.86, gN: 15 },
+  { x: -260, z: -3300, h: 690, r: 1940, cr: 134, cd: 62, gully: 0.96, gN: 17 },
+  { x: 2520, z: 900, h: 214, r: 540, cr: 142, cd: 74, gully: 0.22, gN: 11, cinder: 1 },
+  { x: 900, z: 1880, h: 168, r: 445, cr: 118, cd: 58, gully: 0.18, gN: 9, cinder: 1 },
+];
+
+/**
+ * Cone height and ownership at a world position.
+ *
+ * `u` is how far up the tallest cone under this point we are, 0 at the base
+ * ring and 1 at the summit. Callers use it to fade the fractal mountain noise
+ * out toward the summits — noise on a cone's shoulders is erosion, noise on its
+ * summit is just a broken cone.
+ *
+ * @returns {{h:number, u:number, alp:number}} added metres, summit-ness, and
+ *          how alpine (bare rock / permanent snow) the ground here should read.
+ */
+function coneAt(x, z) {
+  let H = 0, U = 0, alp = 0;
+  for (let i = 0; i < CONES.length; i++) {
+    const c = CONES[i];
+    const dx = x - c.x, dz = z - c.z;
+    const r2 = dx * dx + dz * dz;
+    if (r2 > c.r * c.r) continue;
+    const r = Math.sqrt(r2);
+    const u = 1 - r / c.r;
+    if (u <= 0) continue;
+
+    let h = c.h * Math.pow(u, c.cinder ? 1.34 : 1.62);
+
+    /* Barrancas. The angular jitter is noise sampled on the unit circle, so
+       the gullies wander rather than sitting on a perfect radial fan. */
+    if (c.gully > 0.01 && r > 1) {
+      const ang = Math.atan2(dz, dx);
+      const jit = noise2(Math.cos(ang) * 2.6 + i * 13.1, Math.sin(ang) * 2.6 - i * 7.7) * 1.15;
+      const g = Math.abs(Math.sin(ang * c.gN * 0.5 + jit));
+      /* deepest at mid-flank; 4·u·(1−u) peaks at 1 */
+      h -= c.h * 0.052 * c.gully * g * 4 * u * (1 - u);
+    }
+
+    /* Summit crater — a smooth bowl, which leaves a rim at r = cr. */
+    if (r < c.cr) {
+      const t = r / c.cr;
+      h -= c.cd * (1 - t * t * (3 - 2 * t));
+    }
+
+    if (h > 0) {
+      H += h;
+      if (u > U) U = u;
+      /* Bare above roughly two thirds of the way up; cinder cones are bare
+         all over, being loose scoria nothing takes root in. */
+      const a = c.cinder ? smoothstep(0.05, 0.45, u) : smoothstep(0.42, 0.78, u);
+      if (a > alp) alp = a;
+    }
+  }
+  return { h: H, u: U, alp };
+}
+
+/**
+ * The crest: the ridge that links the cones. Real ranges are not a scatter of
+ * isolated peaks — the volcanoes sit on a continuous structural high, and it is
+ * that ridgeline, not the cones, that divides the wet side from the dry side.
+ */
+const CREST_PTS = [
+  [-700, -3900], [200, -3350], [1000, -2880], [1600, -2280],
+  [2180, -1480], [2500, -650], [2200, 250], [2000, 1050],
+  [2250, 1950], [2600, 2900],
+];
+/**
+ * Distance from the crest axis, with the SIDE it falls on.
+ *
+ * polylineDist gives the distance but not the side, and the side is the whole
+ * point here — it is what makes the west wet and the east a desert. `side` is
+ * the sign of the cross product against the nearest segment, smoothed by the
+ * distance so the rain shadow fades in over a few kilometres instead of
+ * switching along a line.
+ *
+ * @returns {{d:number, side:number}} metres from the axis, and −1 west .. +1 east
+ */
+function crestAt(x, z) {
+  let best = Infinity, cross = 0;
+  for (let i = 0; i < CREST_PTS.length - 1; i++) {
+    const ax = CREST_PTS[i][0], az = CREST_PTS[i][1];
+    const dx = CREST_PTS[i + 1][0] - ax, dz = CREST_PTS[i + 1][1] - az;
+    const len2 = dx * dx + dz * dz;
+    let t = len2 > 0 ? ((x - ax) * dx + (z - az) * dz) / len2 : 0;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    const cx = ax + dx * t, cz = az + dz * t;
+    const d = Math.hypot(x - cx, z - cz);
+    if (d < best) {
+      best = d;
+      /* Signed perpendicular distance: normalise the cross product by the
+         segment length or a long segment reads as "further east" than a short
+         one at the same offset. The crest runs roughly north to south, so
+         positive is east of it. */
+      const L = Math.sqrt(len2) || 1;
+      cross = ((x - cx) * dz - (z - cz) * dx) / L;
+    }
+  }
+  return { d: best, side: clamp(cross / 2600, -1, 1) };
+}
+
 /**
  * Continuous region weights at a world position.
  * @returns {{mount:number, foot:number, bad:number, plain:number, sand:number,
@@ -50,28 +203,59 @@ export function regionAt(x, z) {
   const wx = x + fbm(x * 0.00019 + 11.3, z * 0.00019 - 4.7, 3, 1) * 820;
   const wz = z + fbm(x * 0.00019 - 6.1, z * 0.00019 + 9.9, 3, 1) * 820;
 
-  /* --- the massif: three overlapping uplifts in the north-east */
-  const eA = ellipse(wx, wz, 2150, -2800, 2050, 1500, -0.50);
-  const eB = ellipse(wx, wz, 3450, -1550, 1350, 1050, 0.28);
-  const eC = ellipse(wx, wz, 250, -3350, 1550, 1000, 0.22);
-  const uplift = Math.min(eA, Math.min(eB, eC));
-  let mount = smoothstep(1.08, 0.40, uplift);
-  let foot = smoothstep(1.82, 1.02, uplift) * (1 - mount);
+  const cr = crestAt(wx, wz);
+  const cone = coneAt(x, z);
 
-  /* --- badlands: arid terraced basin east, with an outlying butte field that
-         reads against the massif from the western grasslands */
-  const eD = ellipse(wx, wz, 2700, 1450, 1700, 1350, 0.20);
-  const eE = ellipse(wx, wz, 3600, 2900, 1250, 1000, -0.35);
-  const eG = ellipse(wx, wz, 2350, -560, 1180, 900, -0.28);
-  const eH = ellipse(wx, wz, 1880, 830, 800, 660, 0.55);
-  const badRaw = Math.min(Math.min(eD, eH), Math.min(eE, eG));
-  let bad = smoothstep(1.22, 0.46, badRaw) * (1 - mount) * (1 - foot * 0.7);
+  /* --- alpine: the cones above the treeline, plus the crest itself where it
+         rides high enough between them to go bare. */
+  let mount = Math.max(
+    cone.alp,
+    smoothstep(1500, 620, cr.d) * 0.62,
+  );
 
-  /* --- dry flats: the wash west of the badlands and the southern pan */
-  const eF = ellipse(wx, wz, 1300, 900, 1150, 950, 0.1);
-  let sand = smoothstep(1.25, 0.55, eF) * (1 - bad * 0.55);
-  sand = Math.max(sand, smoothstep(2100, 3400, wz) * (1 - mount) * (1 - bad * 0.5));
-  sand *= (1 - mount) * (1 - foot);
+  /*
+   * ORDER MATTERS HERE. The dry-side landforms are specific places — a flow
+   * field is where a particular vent poured, an ash blanket is where a
+   * particular wind dropped it — whereas timber is simply what grows on
+   * anything nobody else has claimed. So lava and pumice take their ground
+   * first and forest fills the remainder, rather than the other way round.
+   * Assembled the other way, the timber belt (which covers most of the map by
+   * design) suppressed the flow fields to a few percent of the area they
+   * should have had.
+   */
+
+  /* --- lava beds: young basalt flow fields banked against the east foot of the
+         crest, where the eruptions actually went. Two big flows and an outlying
+         tongue, all on the dry side. */
+  const eL1 = ellipse(wx, wz, 3320, 1350, 1720, 1400, 0.16);
+  const eL2 = ellipse(wx, wz, 2450, 2700, 1360, 1020, -0.32);
+  const eL3 = ellipse(wx, wz, 3150, -260, 1180, 900, 0.30);
+  const lavaRaw = Math.min(Math.min(eL1, eL2), eL3);
+  let bad = smoothstep(1.30, 0.46, lavaRaw)
+    * (1 - mount)
+    * smoothstep(-0.30, 0.20, cr.side);          // east of the crest only
+
+  /* --- pumice and ash flats: the sterile pale desert downwind of the vents.
+         Ash falls out on the lee side, so this belongs east and a little south
+         of the big cone, and it thins with distance from it. */
+  const eP = ellipse(wx, wz, 2450, 850, 1780, 1420, 0.08);
+  let sand = smoothstep(1.30, 0.52, eP);
+  sand = Math.max(sand, smoothstep(2000, 3400, wz) * smoothstep(-0.05, 0.55, cr.side));
+  sand *= (1 - mount) * (1 - bad);
+
+  /* --- timbered ridges. The DEFAULT terrain of the map: the whole west side is
+         ridge-and-valley conifer country, and the flanks of the cones are
+         forested to about two thirds of their height. The old composition made
+         foothills a thin collar around a massif; here they are the world. */
+  let foot = clamp(
+    smoothstep(6000, 900, cr.d) * 0.92
+    + smoothstep(0.02, 0.55, cone.u) * 0.55,
+    0, 1)
+    * (1 - mount) * (1 - bad) * (1 - sand)
+    /* Timber thins fast once you are over the crest and into the rain
+       shadow — that transition from closed canopy to open juniper over a
+       couple of kilometres is the most visible thing the divide does. */
+    * (1 - smoothstep(0.05, 0.65, cr.side) * 0.72);
 
   /* --- distant ranges beyond the play area, so the horizon is never empty */
   const edge = Math.max(Math.abs(x), Math.abs(z));
@@ -86,13 +270,29 @@ export function regionAt(x, z) {
   const valley = smoothstep(vW * 1.9, vW * 0.50, rv.d);
   const core = smoothstep(vW * 1.00, vW * 0.26, rv.d);
 
+  /*
+   * ARIDITY IS NOW OROGRAPHIC, and that one change is what makes the map read
+   * as a real range rather than as a set of biome blobs. Air coming off the
+   * Pacific is forced up the west flank, dumps its water there, and comes down
+   * the east side dry: at the same latitude and within thirty kilometres you
+   * get temperate rainforest on one side of the crest and sagebrush desert on
+   * the other. So aridity is driven by which side of the crest you are on, and
+   * every downstream consumer — vegetation, splat colour, scatter — inherits
+   * the divide for free.
+   */
   const aridN = fbm01(x * 0.00032 + 71.2, z * 0.00032 - 33.8, 3, 1);
+  const shadow = smoothstep(-0.55, 0.60, cr.side);
   const arid = clamp(
-    bad * 0.96 + sand * 1.0 + plain * 0.30 + foot * 0.12 + mount * 0.30
-    + (aridN - 0.5) * 0.40 - valley * 0.34,
+    shadow * 0.86 + bad * 0.20 + sand * 0.24
+    - smoothstep(2600, 400, cr.d) * 0.18          // the crest itself catches snow
+    + (aridN - 0.5) * 0.34 - valley * 0.30,
     0, 1);
 
-  return { mount, foot, bad, plain, sand, far, valley, core, arid, valleyD: rv.d, valleyT: rv.t };
+  return {
+    mount, foot, bad, plain, sand, far, valley, core, arid,
+    valleyD: rv.d, valleyT: rv.t,
+    coneU: cone.u, crestD: cr.d, crestSide: cr.side,
+  };
 }
 
 /* ------------------------------------------------------------------- heights */
@@ -104,32 +304,73 @@ function landformAt(x, z, R) {
 
   let H = 0;
 
-  if (R.mount > 0.003) {
-    const r1 = ridged(wax, waz, 6, 1 / 4100, 0.5, 2.11, 0.95);
-    const r2 = ridged(wax * 1.9 + 1200, waz * 1.9 - 800, 4, 1 / 4100);
-    const m = Math.pow(clamp(r1 * 0.79 + r2 * 0.21, 0, 1), 1.30);
-    H += R.mount * (55 + m * 660);
-  }
+  /*
+   * THE CREST. A broad structural swell along the volcanic axis that the cones
+   * are built on top of. Without it each cone sits alone on a plain like a
+   * paperweight; with it the range has a spine and the peaks read as the high
+   * points of one continuous uplift, which is what they are.
+   */
+  const crestSwell = smoothstep(6400, 700, R.crestD);
+  H += crestSwell * 205;
+
+  /* The low-frequency skeleton, tracked alongside H. The cone pass below needs
+     somewhere to fade the fractal detail TO: fading it to zero would drop each
+     summit back to sea level and hang the cone off nothing. */
+  let Hbase = crestSwell * 205;
+
+  /* Ridge-and-valley timber country. Billow gives rounded, soil-mantled ridges
+     — the right shape for slopes that have been under forest since the ice
+     went, as opposed to the sharp ridged-multifractal crests of bare rock. */
   if (R.foot > 0.003) {
-    const b = billow(wax, waz, 5, 1 / 2400);
-    const r = ridged(wax, waz, 4, 1 / 2900);
-    H += R.foot * (34 + b * 128 + r * 92);
+    const b = billow(wax, waz, 5, 1 / 2050);
+    const r = ridged(wax, waz, 4, 1 / 2600);
+    H += R.foot * (40 + b * 176 + r * 118);
+    Hbase += R.foot * 150;
+  }
+  if (R.mount > 0.003) {
+    const r1 = ridged(wax, waz, 6, 1 / 3600, 0.5, 2.11, 0.95);
+    const r2 = ridged(wax * 1.9 + 1200, waz * 1.9 - 800, 4, 1 / 3600);
+    const m = Math.pow(clamp(r1 * 0.79 + r2 * 0.21, 0, 1), 1.30);
+    H += R.mount * (70 + m * 520);
+    Hbase += R.mount * 150;
   }
   if (R.plain > 0.003) {
     const b = billow(wax * 0.85, waz * 0.85, 4, 1 / 3100);
     const s = fbm(x, z, 3, 1 / 4800);
     const lr = ridged(wax * 1.4 - 900, waz * 1.4 + 400, 4, 1 / 1900, 0.5, 2.05);
     H += R.plain * (44 + b * 46 + s * 24 + lr * 34);
+    Hbase += R.plain * 68;
   }
   if (R.bad > 0.003) {
-    /* Broad plateau mass only. The terracing that turns this into mesas is
-       done in refineCore, where it can be applied to the FINAL height and the
-       caprock hardness can be aligned with the riser it actually created. */
-    const base = fbm01(wax * 1.05, waz * 1.05, 5, 1 / 2300);
-    H += R.bad * (26 + Math.pow(base, 1.15) * 430);
+    /*
+     * LAVA BEDS. A basalt flow field is nearly FLAT at the kilometre scale and
+     * savagely rough at the metre scale — the opposite of every other landform
+     * here, and the reason it reads instantly as lava rather than as rock. All
+     * this pass contributes is the gentle overall tilt of the flow away from
+     * its vent and the broad lobes it split into; the rubble that makes it
+     * impassable is added in refineCore where the resolution can carry it.
+     */
+    const lobe = billow(wax * 1.15 + 700, waz * 1.15 - 300, 4, 1 / 1450);
+    H += R.bad * (52 + lobe * 74);
+    Hbase += R.bad * 89;
   }
   if (R.sand > 0.003) {
-    H += R.sand * (20 + billow(wax * 0.85, waz * 1.45, 3, 1 / 2000) * 22);
+    /* Pumice desert: an ash blanket drapes what it lands on, so this is almost
+       featureless, with only long low dunes where the wind has moved it. */
+    H += R.sand * (24 + billow(wax * 0.80, waz * 1.55, 3, 1 / 1700) * 26);
+    Hbase += R.sand * 37;
+  }
+
+  /*
+   * THE CONES, added last and on top of everything, because a volcano is a pile
+   * of its own ejecta sitting on whatever was already there. The fractal
+   * mountain noise above is faded out toward each summit (see `coneDamp`) so
+   * the upper flanks stay clean — noise on a cone's shoulders reads as erosion,
+   * noise on its summit just reads as a broken cone.
+   */
+  const cone = coneAt(x, z);
+  if (cone.h > 0) {
+    H = mix(H, Hbase, smoothstep(0.26, 0.84, cone.u) * 0.94) + cone.h;
   }
   if (R.far > 0.002) {
     /* big soft ranges ringing the world — pure silhouette material */
@@ -314,9 +555,19 @@ export function refineCore(coarse, res, core) {
       const flank = 1 - wv;
 
       if (wm > 0.006) {
+        /*
+         * Alpine detail — but NOT on the cones. refineCore is where the
+         * mid-frequency ridges get added, and 80 m of ridged noise at a 620 m
+         * wavelength is exactly the amount needed to destroy a summit that the
+         * coarse pass went to the trouble of keeping clean. `coneK` fades it
+         * out over the top third of every cone, leaving the barrancas — which
+         * are radial and belong there — as the only relief up high.
+         */
+        const cu = coneAt(x, z).u;
+        const coneK = 1 - smoothstep(0.34, 0.80, cu) * 0.90;
         const r = ridged(wax, waz, 5, 1 / 620, 0.52, 2.09);
         const spur = ridged(wax * 2.3, waz * 2.3, 3, 1 / 620);
-        H += wm * flank * ((r - 0.42) * 190 + (spur - 0.45) * 58);
+        H += wm * flank * coneK * ((r - 0.42) * 190 + (spur - 0.45) * 58);
         hardness = mix(hardness, 0.34 + 0.46 * (0.5 + 0.5
           * Math.sin(H * 0.052 + fbm(x, z, 2, 1 / 700) * 3.0)), wm);
       }
@@ -337,27 +588,50 @@ export function refineCore(coarse, res, core) {
         hardness = mix(hardness, 0.22, wp);
       }
       if (ws > 0.006) {
-        H += ws * flank * (fbm(x * 0.55, z * 1.5, 3, 1 / 250) * 7
-          + fbm(x - 411, z + 122, 3, 1 / 115) * 3.2);
-        hardness = mix(hardness, 0.20, ws);
+        /* Ash DRAPES. It falls out of the air and settles into a blanket that
+           smooths whatever it lands on, so the pumice flats get less relief
+           than any other surface here, not more — and being uncemented dust
+           they are the softest thing the erosion pass will find. */
+        H += ws * flank * (fbm(x * 0.50, z * 1.40, 3, 1 / 320) * 4.2
+          + fbm(x - 411, z + 122, 2, 1 / 130) * 1.5);
+        hardness = mix(hardness, 0.11, ws);
       }
       if (wb > 0.006) {
-        /* Butte country. Terrace the ACTUAL height so the risers land where
-           the land already steepens, use a very long tread and a very short
-           riser (that ratio is the whole difference between a mesa and a
-           hill), and make the whole stack resistant so thermal erosion holds
-           the face near 60 degrees instead of slumping it to an apron. */
-        H += wb * flank * (fbm(wax * 1.2 + 400, waz * 1.2 - 250, 3, 1 / 620) * 26);
-        /* Regional bedding offset. Without it every butte in the province puts
-           its benches at exactly the same absolute elevation, and the range
-           reads as a contour map rather than as separate mesas that happen to
-           share a stratigraphy. +/-30 m of smooth regional dip is enough. */
-        const bedOff = fbm(wax + 2600, waz - 1400, 3, 1 / 1150) * 60
-          + fbm(x - 700, z + 1900, 2, 1 / 430) * 16;
-        const norm = clamp((H + bedOff - 24) / 380, 0, 1);
-        const t = terrace(norm, 4.5, 0.94);
-        H = mix(H, 24 + t.h * 380 - bedOff, wb * 0.88);
-        hardness = mix(hardness, 0.80 + (1 - t.riser) * 0.17, wb);
+        /*
+         * LAVA BEDS.
+         *
+         * The character of an aa flow is that its roughness lives almost
+         * entirely in one narrow band — one to four metres — and there is
+         * essentially nothing between that and the kilometre-scale tilt of the
+         * flow itself. That spectral gap is the tell: hills have detail at
+         * every scale, lava has detail at exactly one, which is why a flow
+         * field looks flat from a ridge and is impassable on foot.
+         *
+         *   RUBBLE    ridged noise at ~9 m, cubed. Cubing is what turns a
+         *             smooth wave into isolated jagged blocks with flat-ish
+         *             ground between them, instead of corduroy.
+         *   PRESSURE  long ridges where the crust buckled against itself as
+         *             the still-liquid interior kept pushing. These are the
+         *             large forms a flow DOES have, and they are linear rather
+         *             than radial, so ridged noise stretched along the flow.
+         *   TUBES     collapsed lava tubes: narrow, deep, sharply-bounded
+         *             trenches. Rare, but they are the single most recognisable
+         *             feature of a basalt field and they make the terrain
+         *             genuinely tactical to ride across.
+         */
+        const rub = ridged(wax * 1.0, waz * 1.0, 3, 1 / 9.0, 0.55, 2.13);
+        H += wb * flank * (rub * rub * rub * 5.4 - 0.9);
+
+        const press = ridged(wax * 0.42 + 900, waz * 1.35 - 400, 3, 1 / 210, 0.5, 2.05);
+        H += wb * flank * Math.pow(press, 1.6) * 17;
+
+        const tube = ridged(wax * 0.75 - 2200, waz * 0.75 + 1500, 2, 1 / 340, 0.5, 2.0);
+        H -= wb * flank * smoothstep(0.86, 0.98, tube) * 13;
+
+        /* Basalt is the hardest thing in the world by a long way; the droplet
+           pass has to leave the flows more or less as it found them or the
+           whole field slumps into rolling hills within one erosion run. */
+        hardness = mix(hardness, 0.94, wb);
       }
       if (wv > 0.002) {
         H -= wv * fbm(x, z, 2, 1 / 360) * 4;

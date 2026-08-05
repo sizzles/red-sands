@@ -1,5 +1,5 @@
 {
-  "name": "red-sands",
+  "name": "broken-road",
   "version": "0.1.0",
   "main": "index.js",
   "scripts": {
@@ -20,13 +20,14 @@
     "open-world",
     "procedural-generation",
     "game",
-    "western",
+    "survival",
+    "motorcycle",
     "proceduralcontent",
     "shaders",
     "glsl"
   ],
   "license": "MIT",
-  "description": "An open-world western that runs entirely in the browser. Procedurally generated terrain, sky, weather, town and audio — no art assets. three.js + WebGL2.",
+  "description": "An open-world survival ride through the Cascade Range, entirely in the browser. Procedurally generated volcanic terrain, weather, infected, a motorcycle and audio — no art assets. three.js + WebGL2.",
   "dependencies": {
     "three": "^0.185.1"
   },
@@ -36,12 +37,12 @@
   },
   "type": "module",
   "private": false,
-  "homepage": "https://github.com/gillworks/red-sands#readme",
+  "homepage": "https://github.com/sizzles/red-sands#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gillworks/red-sands.git"
+    "url": "git+https://github.com/sizzles/red-sands.git"
   },
   "bugs": {
-    "url": "https://github.com/gillworks/red-sands/issues"
+    "url": "https://github.com/sizzles/red-sands/issues"
   }
 }

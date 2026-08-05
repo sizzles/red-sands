@@ -44,8 +44,8 @@ export class MySystem {
 ```
 
 Registered ids: `procTextures timeOfDay weather terrain water vegetation scatter
-town lighting sky clouds particles physics player horse wildlife camera postfx
-audio hud`. Reach another system with `ctx.get('terrain')`.
+town lighting sky clouds particles physics player bike wildlife freakers loot
+camera postfx audio hud touch`. Reach another system with `ctx.get('terrain')`.
 
 ---
 
@@ -67,8 +67,12 @@ Full field list lives in `src/core/Context.js` — read it. Summary of ownership
 | `ctx.quality.*` | engine | everyone |
 
 `ctx.on(evt, fn)` / `ctx.emit(evt, payload)` for events. Known events:
-`ready`, `teleport`, `weatherChange`, `lightning`, `hourChange`, `footstep`,
-`mount`, `dismount`, `gunshot`.
+`ready`, `teleport`, `playerTeleported`, `weatherChange`, `lightning`,
+`hourChange`, `footstep`, `mount`, `dismount`, `mountBeat`, `gunshot`,
+`bikeStart`, `bikeStall`, `freakerHit`, `freakerKilled`, `looted`.
+
+`ctx.player.horse` still carries that name — it is a frozen field half a dozen
+systems read — but what it holds is the **bike**. See §4.8.
 
 ---
 
@@ -169,7 +173,62 @@ PT.burst(name, position, count, opts);
 ```
 All particles are soft-particle depth-faded and lit by `ctx.env`.
 
-### 4.7 `audio`
+### 4.7 `bike` — THE RIDEABLE CONTRACT
+
+Anything the player can ride publishes this surface, and it is deliberately the
+one the horse published before it, so `Player`'s mount transition, mounted pose,
+camera rig and audio hooks work against any of them without a branch:
+
+```js
+const B = ctx.get('bike');
+B.state;            // { position, velocity, radius, height, grounded,
+                    //   groundNormal, maxSlopeCos, stepHeight } — as Physics wants
+B.yaw; B.speed01; B.renderPos; B.mounted; B.holdStill;
+B.syncPose(dt);     // idempotent per frame; pose before anyone reads the seat
+B.getSaddle();      // → { position, quaternion, stirrupL, stirrupR,
+                    //     bobMetres, gaitPhase, gait, speed01, freq,
+                    //     gripL, gripR, vehicle }
+B.status();         // → { fuel, running, rpm, gear, speed, speedKph, headlight }
+B.refuel(amount);   // spends one `fuel` from Loot; false if there is none
+```
+
+`stirrupL/R` are footpegs. `freq` MUST be 0 for a vehicle — Player gates its
+whole gait-rocking chain on it. `vehicle: true` switches the rider from an
+equestrian seat to a forward crouch with the hands IK'd onto `gripL/R`.
+
+### 4.8 `freakers`
+
+```js
+const F = ctx.get('freakers');
+F.raycast(origin, dir, maxDist);   // → hit | null   (same shape as Wildlife's)
+F.applyHit(hit, damage);           // → { killed, species } | null
+F.alarm(position, radius, intensity);  // wake everything in earshot
+F.hunting;                         // how many are actively chasing, for the HUD
+F.noise;                           // how loud the player is being, 0 .. ~14
+F.stats();
+```
+
+Anything that makes a noise should call `alarm()`. The single most important
+number in the game is `F.noise`: crouching is 0.25, walking 1.0, the bike with
+the throttle open is 14.
+
+### 4.9 `loot`
+
+```js
+const L = ctx.get('loot');
+L.inventory;             // { fuel, ammo, scrap, meds } — read freely
+L.nearest();             // the stash in range, or null
+L.collect(stash);        // → what was gained
+L.take(res, n);          // → false if there is not enough
+L.give(res, n);          // → how much fitted under the cap
+L.dropFrom(pos, kind);   // something died carrying something
+```
+
+`Weapon.reserve` is reconciled against `inventory.ammo` every frame by Loot —
+the weapon never learns an inventory exists and the inventory never has to
+understand a reload.
+
+### 4.10 `audio`
 
 ```js
 const A = ctx.get('audio');
@@ -183,12 +242,15 @@ Everything is synthesised with WebAudio — no sample files.
 
 ## 5. Art direction
 
-The target is **late-19th-century American West, shot on film**. Reference the
-look of RDR2: not saturated, not "video-game blue". Specifically:
+The target is **the wet side of the Cascade Range, shot on film**. Overcast,
+cold, and dark. Specifically:
 
-- **Palette.** Bleached ochre, sage green, dust grey, oxidised red rock, cold
-  slate shadow. Greens are *desaturated and yellow-shifted*, never emerald.
-  Skies at midday are pale and hazy near the horizon, not deep cyan.
+- **Palette.** Near-black basalt, blue-green conifer shadow, wet duff, pale
+  pumice, and snow. Greens read green because everything is DARK, not because
+  anything is saturated — the metrics gate caps on-screen green saturation at
+  0.34 and it is right to. Rock is GREY: andesite and basalt are young and
+  barely oxidised, and the red sandstone this world used to be made of was a
+  desert mineralogy. Skies are a lid more often than they are blue.
 - **Light.** Strong directional key with genuinely soft penumbrae. Skylight fills
   shadows with *cool blue*; bounce off the ground fills with *warm ochre*.
   Golden hour is the money shot: long shadows, rim-lit dust, aerial perspective

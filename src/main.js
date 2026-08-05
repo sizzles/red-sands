@@ -16,12 +16,15 @@ import { Clouds } from './render/Clouds.js';
 import { Particles } from './render/Particles.js';
 import { Physics } from './sim/Physics.js';
 import { Player } from './player/Player.js';
-import { Horse } from './player/Horse.js';
+import { Bike } from './player/Bike.js';
 import { Wildlife } from './sim/Wildlife.js';
+import { Freakers } from './sim/Freakers.js';
+import { Loot } from './sim/Loot.js';
 import { CameraRig } from './player/CameraRig.js';
 import { PostFX } from './render/PostFX.js';
 import { Audio } from './audio/Audio.js';
 import { HUD } from './ui/HUD.js';
+import { TouchControls } from './ui/TouchControls.js';
 
 const params = new URLSearchParams(location.search);
 const CAPTURE = params.get('capture') === '1';
@@ -42,8 +45,10 @@ const S = [
   [new Weather(ctx),     10],
   [new Physics(ctx),     70],
   [new Player(ctx),      75],
-  [new Horse(ctx),       80],
+  [new Bike(ctx),        80],
   [new Wildlife(ctx),    85],
+  [new Freakers(ctx),    86],
+  [new Loot(ctx),        87],
   [new CameraRig(ctx),   90],
   [new ProcTextures(ctx), 1],
   [new Terrain(ctx),     20],
@@ -58,6 +63,7 @@ const S = [
   [new PostFX(ctx),      95],
   [new Audio(ctx),       97],
   [new HUD(ctx),         99],
+  [new TouchControls(ctx), 100],
 ];
 for (const [sys, initOrder] of S) engine.add(sys, { initOrder });
 
@@ -72,10 +78,11 @@ const LABELS = {
   scatter: 'strewing the stones', town: 'building the town',
   lighting: 'hanging the light', sky: 'painting the sky',
   clouds: 'gathering cloud', particles: 'seeding dust',
-  physics: 'setting the rules', player: 'waking the rider',
-  horse: 'saddling up', wildlife: 'releasing the herds',
+  physics: 'setting the rules', player: 'waking the drifter',
+  bike: 'kicking it over', wildlife: 'releasing the herds',
+  freakers: 'listening for the horde', loot: 'hiding the caches',
   camera: 'framing the shot', postfx: 'grading the film',
-  audio: 'tuning the wind', hud: 'final touches', ready: 'ready',
+  audio: 'tuning the wind', hud: 'final touches', touch: 'final touches', ready: 'ready',
 };
 
 await engine.initAll((p, id) => {
@@ -168,5 +175,5 @@ window.__GAME = {
 };
 
 if (import.meta.env && import.meta.env.DEV) {
-  console.log('[RED SANDS] booted at quality:', quality.name);
+  console.log('[BROKEN ROAD] booted at quality:', quality.name);
 }
