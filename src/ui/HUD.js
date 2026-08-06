@@ -479,6 +479,13 @@ export class HUD {
       this._promptT = 0.3;
       return;
     }
+    const roads = ctx.get('roads');
+    const pump = roads && roads.nearestStation ? roads.nearestStation() : null;
+    if (pump && ctx.player.mode === 'onFoot') {
+      this._prompt = { key: 'E', label: `Refuel  ·  ${pump.tanks} left` };
+      this._promptT = 0.3;
+      return;
+    }
     const loot = ctx.get('loot');
     const stash = loot && loot.nearest ? loot.nearest() : null;
     if (stash) {
@@ -1263,6 +1270,20 @@ export class HUD {
       size: 7.5 * s, colour: st.running ? INK_DIM : BLOOD,
       alpha: 0.55 * A, align: 'center', track: 0.14,
     });
+
+    /*
+     * ON-ROAD TELL. One short rule under the speed, present only while there is
+     * road under the wheels. It exists because the road's benefit is mostly
+     * GRIP, which the player feels but cannot see — at night, in rain, on a
+     * gravel spur that looks like the ground beside it, there is otherwise no
+     * confirmation that the thing you are riding on is the thing you were
+     * looking for.
+     */
+    const on = st.onRoad || 0;
+    if (on > 0.03) {
+      const bw = 44 * s, bx = x - gap * 0.92 - bw * 0.5, by = y + 26 * s;
+      this._hairline(c, bx, by, bx + bw * on, by, GOLD, 0.55 * on * A, Math.max(1, 1.6 * s));
+    }
   }
 
   /**

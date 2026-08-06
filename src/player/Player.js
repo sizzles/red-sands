@@ -542,6 +542,19 @@ export class Player {
        * listener, which bails when this one has already claimed the press.
        */
       if (this.pickup) { this._takePickup(); this._actionClaimed = this.ctx.time.frame; return; }
+      /*
+       * The pumps outrank a stash. Standing on a forecourt there is almost
+       * always a crate within a couple of metres too, and "I pressed E at the
+       * pump and picked up some scrap" is the kind of small betrayal that
+       * makes an interaction system feel untrustworthy.
+       */
+      const roads = this.ctx.get('roads');
+      const pump = roads && roads.nearestStation ? roads.nearestStation() : null;
+      if (pump) {
+        roads.usePump(pump);
+        this._actionClaimed = this.ctx.time.frame;
+        return;
+      }
       const loot = this.ctx.get('loot');
       const stash = loot && loot.nearest ? loot.nearest() : null;
       if (stash) {

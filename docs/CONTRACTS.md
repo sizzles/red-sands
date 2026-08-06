@@ -43,9 +43,14 @@ export class MySystem {
 }
 ```
 
-Registered ids: `procTextures timeOfDay weather terrain water vegetation scatter
-town lighting sky clouds particles physics player bike wildlife freakers loot
-camera postfx audio hud touch`. Reach another system with `ctx.get('terrain')`.
+Registered ids: `procTextures timeOfDay weather terrain water roads vegetation
+scatter town lighting sky clouds particles physics player bike wildlife freakers
+loot camera postfx audio hud touch`. Reach another system with
+`ctx.get('terrain')`.
+
+**Init order matters for `roads` (35).** It must come after `terrain` (20) and
+before `vegetation` (40) and `scatter` (45), both of which read the network —
+vegetation to keep off it, scatter to draw it.
 
 ---
 
@@ -69,7 +74,8 @@ Full field list lives in `src/core/Context.js` — read it. Summary of ownership
 `ctx.on(evt, fn)` / `ctx.emit(evt, payload)` for events. Known events:
 `ready`, `teleport`, `playerTeleported`, `weatherChange`, `lightning`,
 `hourChange`, `footstep`, `mount`, `dismount`, `mountBeat`, `gunshot`,
-`bikeStart`, `bikeStall`, `freakerHit`, `freakerKilled`, `looted`.
+`bikeStart`, `bikeStall`, `freakerHit`, `freakerKilled`, `looted`,
+`refuelled`.
 
 `ctx.player.horse` still carries that name — it is a frozen field half a dozen
 systems read — but what it holds is the **bike**. See §4.8.
@@ -228,7 +234,35 @@ L.dropFrom(pos, kind);   // something died carrying something
 the weapon never learns an inventory exists and the inventory never has to
 understand a reload.
 
-### 4.10 `audio`
+### 4.10 `roads`
+
+```js
+const R = ctx.get('roads');
+R.routes;                  // polylines, each tagged .cls .halfWidth .speed
+R.index;                   // RoadIndex — nearest(x,z) / distance2(x,z)
+R.query(x, z);             // → { on, speed, d, tx, tz }
+R.distance2(x, z);         // cheap keep-out test for bakes
+R.nearestStation();        // the station whose pumps are in range, or null
+R.usePump(station);        // fills the tank, costs the station one reserve
+R.stats();
+```
+
+`query().on` is 0 off-road and 1 on the running surface, easing out over a 1.9 m
+shoulder. `speed` is the class multiplier (highway 1.00, logging 0.86, track
+0.70) and is only meaningful where `on > 0`.
+
+**Roads plans; Scatter draws.** The ribbon is Scatter's existing streaming
+ground mesh — it takes `roads.routes` and widths straight off this system. Do
+not render a second road surface; two ribbons fight over the same z-range.
+
+**The roadbed is DRAPED, not graded.** `Terrain.addHeightOverride` was measured
+and rejected for this: `getHeight` scans overrides linearly and is the hottest
+function in the engine, so a chunked road network would put ~140 footprint tests
+on every ground query forever. The router earns the smoothness instead by
+punishing gradient quadratically. If you ever want real cuttings, index the
+override list spatially first.
+
+### 4.11 `audio`
 
 ```js
 const A = ctx.get('audio');

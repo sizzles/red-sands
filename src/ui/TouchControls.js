@@ -312,8 +312,10 @@ export class TouchControls {
       label = 'Off';
     } else {
       const loot = ctx.get('loot');
+      const roads = ctx.get('roads');
       const pl = ctx.get('player');
-      if (loot && loot.nearest && loot.nearest()) label = 'Loot';
+      if (roads && roads.nearestStation && roads.nearestStation()) label = 'Fuel';
+      else if (loot && loot.nearest && loot.nearest()) label = 'Loot';
       else if (pl && pl.carcass) label = 'Skin';
       else if (pl && pl.pickup) label = 'Take';
     }

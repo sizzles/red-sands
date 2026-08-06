@@ -55,6 +55,44 @@ touch controls appear on their own.
 Add `?quality=mobile|low|medium|high|ultra` to force a preset, or `?touch=1` to see the
 touch controls on a desktop.
 
+## The road
+
+Ten routes in three classes, and the classes are not three widths of the same
+road — they route differently because they are held to different gradients. A
+state route is capped at 7.5%, a logging spur at 15%, a two-track at 26%, which
+is roughly what real survey standards allow. The highway therefore has to go
+round the hill the two-track goes over.
+
+Routing is A* over a cost grid, and it is the second router written for this. The
+first was greedy least-effort descent — step, fan out candidate headings, take
+the best — and it was replaced on evidence: measured over the finished network it
+gave highways a mean gradient of **15.9%** with pitches over 100%, and 44% of one
+route steeper than 12%. A greedy walker facing a slope has no candidate that
+avoids it and takes the least-bad one; worse, it structurally cannot switchback,
+because reversing direction is never a locally good move. A* has neither blind
+spot — it will send a road two kilometres sideways and back if that is genuinely
+cheaper, which is what a survey does. The same network now measures **4.5 / 7.8 /
+7.0%** mean on its three highways.
+
+The cost function is `length · (1 + 9·(grade/maxGrade)²)`, quadratic because
+earthwork goes as the square of the cut, with a ×24 penalty rather than an
+infinity beyond the class limit: a road that breaks its own standard for eighty
+metres is a real road, one that cannot be built at all is a crash.
+
+**On the road the bike is quicker, but grip is the real prize.** Top speed rises
+14%; grip rises 20% *and* the loose-surface penalty vanishes, which off-road can
+drag drive down to 0.35 on wet pumice. The suspension also stops working, which
+is the part you actually feel. Roads clear their own corridor — timber felled
+7.5 m either side, sward thinned — so in the trees a road reads as a cut long
+before you can see its surface.
+
+**Fuel stations** sit on the highways at roughly 1.1 km intervals, on the
+flattest ground within reach of the carriageway, and each holds three tanks that
+do not come back. The map is a slowly emptying resource, so the third hour is a
+longer ride than the first. Their pole signs carry the only saturated colour in
+the world, because from the saddle at 90 km/h in the rain the sign is the only
+part of a station you will ever spot in time to stop.
+
 ## The loop
 
 Three numbers, and they pull against each other:
@@ -119,6 +157,27 @@ everything within 62 m straight into a chase with your position already known �
 chains through overlapping packs. Waking one group next to two others is how six become
 twenty-five without twenty-five ever being simulated as a group.
 
+**Redwoods.** 48–78 m, and the point of them is scale — which is not a property
+of one object but a relationship. A 62 m redwood among 20 m ponderosa reads as
+enormous; the same tree alone reads as a normal tree seen from closer. So two
+thirds of the height is clean bole with nothing on it, the crown radius is 12% of
+height against the pine's 30%, and the butt swell is an exponential buttress
+bolted onto a near-cylindrical column. The empty vertical column *is* the effect.
+They are sited rather than sprinkled: a low-frequency grove mask plus moisture and
+altitude gates puts them on the wet valley floors west of the crest and nowhere
+else, so riding up out of the valley means riding out of them.
+
+**Columnar basalt.** The signature rock of a flood-basalt province, and it looks
+like masonry because it is a crystallisation pattern — a cooling sheet contracts,
+relieves the strain as cracks meeting at 120°, and those hexagons extrude down the
+cooling front into columns. Three things follow and all three are modelled: the
+columns *tessellate* (one block that cracked, not a pile of rocks), the tops are
+*broken at cross-joints* rather than cut to an envelope, and they stand
+*perpendicular to the cooling surface*, so a cluster shares one tilt instead of
+each column leaning independently. Placed where flat ground paints as bedrock —
+on this map the unique signature of a young lava field — and on cut faces where a
+river has sliced a flow open.
+
 **Sky and light.** A Hillaire-style scattering chain — transmittance, multiple-scattering
 and sky-view LUTs, Rayleigh + Mie with Cornette-Shanks phase and an ozone layer. The sun
 follows a NOAA solar ephemeris at 43.9° N, which is worth more than a geography note:
@@ -144,12 +203,12 @@ rather than being reimplemented and drifting.
 
 ## Architecture
 
-Twenty-two systems on a fixed lifecycle, sharing one frozen context object:
+Twenty-three systems on a fixed lifecycle, sharing one frozen context object:
 
 ```
 src/core/       Engine, Context (the shared contract), Config
 src/materials/  procedural PBR library + worker bake pool
-src/world/      Terrain · Vegetation · Scatter · Town
+src/world/      Terrain · Roads · Vegetation · Scatter · Town
 src/render/     Sky · Clouds · Water · Lighting · Particles · PostFX
 src/sim/        TimeOfDay · Weather · Physics · Wildlife · Freakers · Loot
 src/player/     Player · Bike · Weapon · CameraRig

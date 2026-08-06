@@ -65,6 +65,19 @@ const DRIVE = 8.4;
 const BRAKE = 13.0;
 /** Coast-down: rolling resistance plus a v² air term. */
 const ROLL = 0.55, DRAG = 0.0062;
+/**
+ * What a road is worth.
+ *
+ * The top-speed gain is deliberately the SMALL half of this. A graded surface
+ * is only about fourteen percent quicker flat out — what it really buys is
+ * GRIP, and grip is worth far more than speed because it is what the loose
+ * ground and the rain take away. Off the road on wet pumice the bike has 0.35
+ * of its drive available and corners like a shopping trolley; on the state
+ * route it has all of it in any weather. That difference, not the speedometer,
+ * is why the long way round is worth taking.
+ */
+const ROAD_TOP_GAIN = 0.14;
+const ROAD_GRIP_GAIN = 0.20;
 
 /** Seconds of full throttle in one tank. */
 const FUEL_SECONDS = 250;
@@ -115,6 +128,10 @@ export class Bike {
     this.gear = 1;
     this.throttle = 0;
     this.headlightOn = false;
+    /** 0..1 how much road is under the wheels. Written each fixed step. */
+    this.onRoad = 0;
+    this.roadClass = 0;
+    this.grip = 1;
 
     /* Everything below is render-side smoothing, updated in _pose. */
     this.lean = 0;
@@ -391,12 +408,25 @@ export class Bike {
       steerWant = -i.r;
 
       const grade = this._grade();
+
+      /* --- the road ------------------------------------------------------ */
+      const roads = this.ctx.get('roads');
+      const q = roads ? roads.query(s.position.x, s.position.z) : null;
+      const onRoad = q ? q.on : 0;
+      const roadClass = q ? q.speed : 1;
+      this.onRoad = onRoad;
+      this.roadClass = onRoad > 0.02 ? roadClass : 0;
+
       /* Traction. Loose ground and wet ground both cost drive, and the wet
-         term is why the rain matters mechanically and not only visually. */
+         term is why the rain matters mechanically and not only visually.
+         A made surface removes the loose term entirely — that is what "made"
+         means — and halves what the rain costs, because asphalt drains. */
       const surf = this.ctx.world.getSurface(s.position.x, s.position.z);
-      const loose = (surf.sand || 0) * 0.55 + (surf.dirt || 0) * 0.18 + (surf.snow || 0) * 0.62;
-      const wet = (this.ctx.env.wetness || 0) * 0.22;
-      const grip = Math.max(0.35, 1 - loose - wet);
+      const loose = ((surf.sand || 0) * 0.55 + (surf.dirt || 0) * 0.18
+        + (surf.snow || 0) * 0.62) * (1 - onRoad);
+      const wet = (this.ctx.env.wetness || 0) * (0.22 - onRoad * 0.11);
+      const grip = Math.min(1.15,
+        Math.max(0.35, 1 - loose - wet) * (1 + onRoad * ROAD_GRIP_GAIN));
       this.grip = grip;
 
       let a = 0;
@@ -417,7 +447,10 @@ export class Bike {
       a -= ROLL * Math.sign(this.speed) + DRAG * this.speed * Math.abs(this.speed);
 
       this.speed += a * h;
-      const top = this.running ? TOP_SPEED * (this.throttle > 0.7 ? 1 : CRUISE / TOP_SPEED) : PADDLE;
+      const roadK = 1 + onRoad * roadClass * ROAD_TOP_GAIN;
+      const top = this.running
+        ? TOP_SPEED * roadK * (this.throttle > 0.7 ? 1 : CRUISE / TOP_SPEED)
+        : PADDLE;
       this.speed = THREE.MathUtils.clamp(this.speed, -PADDLE, Math.max(PADDLE, top));
       if (!this.running && this.speed > PADDLE) this.speed = Math.max(PADDLE, this.speed - 3.0 * h);
       if (Math.abs(this.speed) < 0.02 && i.f === 0) this.speed = 0;
@@ -565,7 +598,17 @@ export class Bike {
     this._prevGroundY = groundY;
     /* Spring-damper driven by how hard the ground just moved under the wheel
        plus a share of the braking dive, in metres of fork travel. */
-    const impulse = THREE.MathUtils.clamp(-dY * 4.5, -1, 1) * BIKE.forkTravel;
+    /*
+     * A ROAD IS SMOOTH, and the suspension is where the player feels that.
+     * The terrain under the road is the same lumpy heightfield it always was —
+     * the roadbed is draped, not graded (see Roads.js for why) — so without
+     * this the state route rides exactly like the field beside it and the
+     * whole system reads as a texture with a speed buff attached. Damping the
+     * fork input by how much road is under the wheel puts the difference back
+     * where it belongs: on the bars.
+     */
+    const roadSmooth = 1 - (this.onRoad || 0) * 0.72;
+    const impulse = THREE.MathUtils.clamp(-dY * 4.5, -1, 1) * BIKE.forkTravel * roadSmooth;
     const dive = THREE.MathUtils.clamp(-this._accelEst() * 0.012, -0.4, 0.9) * BIKE.forkTravel;
     const want = THREE.MathUtils.clamp(impulse + dive, -BIKE.forkTravel, BIKE.forkTravel);
     this._forkVel += (want - this._forkComp) * 190 * h - this._forkVel * 17 * h;
@@ -708,6 +751,7 @@ export class Bike {
     return {
       fuel: this.fuel, running: this.running, rpm: this.rpm, gear: this.gear,
       speed: this.speed, speedKph: this.speed * 3.6, headlight: this._beam > 0.5,
+      onRoad: this.onRoad || 0, grip: this.grip || 1,
     };
   }
 

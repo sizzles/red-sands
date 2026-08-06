@@ -2,6 +2,28 @@ import * as THREE from 'three';
 import { rng } from '../../core/Context.js';
 import { VEG_HASH, VEG_WIND, injectVeg, makeInstanced, hugeSphere } from './VegCommon.js';
 import { buildTreePair, SPECIES_INFO } from './TreeGen.js';
+
+/**
+ * Felled corridor either side of a road centre-line, metres. Wider than the
+ * widest carriageway (3.6 m) by enough that a full-grown pine's canopy does not
+ * overhang the running surface, because a canopy that does is indistinguishable
+ * from a tree growing in the road once you are underneath it.
+ */
+const ROAD_CLEAR = 7.5;
+
+/**
+ * Where the giants are.
+ *
+ * Two octaves at 900 m and 340 m, thresholded hard. The long wavelength decides
+ * which valleys have groves at all and the short one frays their edges, so a
+ * grove has a boundary you can walk out of rather than fading uniformly to
+ * nothing across the whole map.
+ */
+function redwoodMask(x, z) {
+  const a = Math.sin(x * 0.00111 + 2.7) * Math.cos(z * 0.00097 - 1.3);
+  const b = Math.sin((x + 1900) * 0.00294 - 0.6) * Math.cos((z - 700) * 0.00331 + 2.2);
+  return Math.max(0, Math.min(1, 0.5 + a * 0.42 + b * 0.20));
+}
 import { bakeImpostors, IMPOSTOR_CUTOFF } from './Impostors.js';
 import { LEAF_CUTOFF } from './VegTextures.js';
 import { logSize } from './Ecology.js';
@@ -399,6 +421,10 @@ export class Forest {
     const waterLevel = ctx.world.waterLevel;
     const getHeight = ctx.world.getHeight;
     const isWater = ctx.world.isWater;
+    /* Roads inits before vegetation; resolved once, outside a loop that runs
+       tens of thousands of times. */
+    const roadsSys = ctx.get ? ctx.get('roads') : null;
+    const roadD2 = (roadsSys && roadsSys.index) ? (x, z) => roadsSys.distance2(x, z) : null;
 
     const q = ctx.quality;
     const budget = q.name === 'low' ? 0.35 : q.name === 'medium' ? 0.62 : 1.0;
@@ -453,6 +479,19 @@ export class Forest {
           const y = getHeight(x, z);
           if (y < waterLevel + 0.7) continue;
           if (isWater(x, z)) continue;
+          /*
+           * NOTHING GROWS IN THE CARRIAGEWAY. Trees are placed at real world
+           * positions (unlike grass, which is wrapped in the shader), so this
+           * is an exact test rather than a density field — and it has to be
+           * exact, because a single pine standing in the middle of the state
+           * route is the one defect that makes a whole road network read as
+           * fake. The margin is the road's own half-width plus a felled
+           * corridor either side.
+           */
+          if (roadD2) {
+            const rd2 = roadD2(x, z);
+            if (rd2 < ROAD_CLEAR * ROAD_CLEAR) continue;
+          }
           const sl = maps.sample(maps.slope, x, z);
           if (sl < 0.44) continue;
           const mo = maps.sample(maps.moist, x, z);
@@ -462,7 +501,22 @@ export class Forest {
           let sp;
           const pick = r();
           const dense = maps.sample(maps.forest, x, z);
-          if (pick < 0.042) sp = 'snag';
+          /*
+           * REDWOOD GROVES. Rare, and sited rather than sprinkled: they want
+           * the wettest, densest, lowest ground on the map, which is the valley
+           * floor west of the crest. `groveMask` is a very low-frequency field,
+           * so where they occur they occur TOGETHER — a stand of six is a
+           * cathedral and six spread over a kilometre is just six odd trees.
+           *
+           * The altitude ceiling is doing real work: nothing this big grows at
+           * elevation, so the giants belong to the valleys and the ridges stay
+           * ponderosa. That vertical zonation is most of what makes riding up
+           * out of the valley feel like going somewhere.
+           */
+          const grove = redwoodMask(x, z);
+          if (grove > 0.55 && mo > 0.42 && y < waterLevel + 210 && dense > 0.40
+              && pick < 0.10 + grove * 0.40) sp = 'redwood';
+          else if (pick < 0.042) sp = 'snag';
           else if (mo > 0.34 && y < waterLevel + 140) sp = pick < 0.60 ? 'cottonwood' : 'scrubOak';
           else if (y > 118 && (north > 0.32 || dense > 0.55)) sp = pick < 0.82 ? 'pine' : 'scrubOak';
           else if (dense > 0.62) sp = pick < 0.55 ? 'pine' : 'scrubOak';
@@ -555,11 +609,14 @@ export class Forest {
     this.bands = new THREE.Vector2(A, B);
 
     /* --------------------------------------------------------- geometries */
-    const VARIANTS = { pine: 3, cottonwood: 3, scrubOak: 3, snag: 2 };
+    /* Two redwood variants, not three: they are rare by design, and each one is
+       the most expensive skeleton in the library (a 60 m trunk at 11 sides plus
+       forty whorls of foliage). Two is enough that a grove is not a mirror. */
+    const VARIANTS = { pine: 3, redwood: 2, cottonwood: 3, scrubOak: 3, snag: 2 };
     const kinds = [];
     this.kindIndex = {};
     let ki = 0;
-    for (const sp of ['pine', 'cottonwood', 'scrubOak', 'snag']) {
+    for (const sp of ['pine', 'redwood', 'cottonwood', 'scrubOak', 'snag']) {
       this.kindIndex[sp] = [];
       for (let v = 0; v < VARIANTS[sp]; v++) {
         const seed = (ctx.seed ^ 0x27d4eb2d) + ki * 15485863 + v * 7919;
@@ -578,6 +635,9 @@ export class Forest {
       /* linear multipliers on an atlas that is already olive — pines want to
          read dusty blue-green, not spring green */
       pine: new THREE.Color(0.74, 0.76, 0.60),
+      /* Deeper and bluer than pine: redwood foliage sits in permanent shade
+         under its own canopy and is the darkest green in the world. */
+      redwood: new THREE.Color(0.56, 0.66, 0.55),
       cottonwood: new THREE.Color(1.02, 0.98, 0.74),
       scrubOak: new THREE.Color(0.92, 0.88, 0.66),
       snag: new THREE.Color(1, 1, 1),
@@ -672,7 +732,7 @@ export class Forest {
 
     const barkMats = {}, leafMats = {};
     for (let lod = 0; lod < 2; lod++) {
-      for (const sp of ['pine', 'cottonwood', 'scrubOak', 'snag']) {
+      for (const sp of ['pine', 'redwood', 'cottonwood', 'scrubOak', 'snag']) {
         barkMats[sp + lod] = mkBark(sp, lod);
         leafMats[sp + lod] = mkLeaf(sp, lod);
       }

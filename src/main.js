@@ -8,6 +8,7 @@ import { Weather } from './sim/Weather.js';
 import { Terrain } from './world/Terrain.js';
 import { Water } from './render/Water.js';
 import { Vegetation } from './world/Vegetation.js';
+import { Roads } from './world/Roads.js';
 import { Scatter } from './world/Scatter.js';
 import { Town } from './world/Town.js';
 import { Lighting } from './render/Lighting.js';
@@ -53,6 +54,7 @@ const S = [
   [new ProcTextures(ctx), 1],
   [new Terrain(ctx),     20],
   [new Water(ctx),       30],
+  [new Roads(ctx),       35],
   [new Vegetation(ctx),  40],
   [new Scatter(ctx),     45],
   [new Town(ctx),        50],
@@ -75,7 +77,7 @@ const LABELS = {
   procTextures: 'weaving materials', timeOfDay: 'placing the sun',
   weather: 'stirring the air', terrain: 'raising the land',
   water: 'cutting the rivers', vegetation: 'sowing the grass',
-  scatter: 'strewing the stones', town: 'building the town',
+  roads: 'laying the road', scatter: 'strewing the stones', town: 'building the town',
   lighting: 'hanging the light', sky: 'painting the sky',
   clouds: 'gathering cloud', particles: 'seeding dust',
   physics: 'setting the rules', player: 'waking the drifter',
