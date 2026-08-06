@@ -182,6 +182,7 @@ export class Compound {
     _v.set(built.gateAt.x, 0, built.gateAt.z).applyQuaternion(_q).add(this.site.pos);
     this.gateGroup.position.copy(_v);
     this._gateY0 = this.gateGroup.position.y;
+    this._gateLift = (built.gateH || YARD.wallH) + 0.6;
     this.gateParts = [];
     for (const [key, geo] of built.gate) {
       const m = new THREE.Mesh(geo, this.mats.get(key));
@@ -299,7 +300,11 @@ export class Compound {
       this.gateOpen += (want - this.gateOpen) * Math.min(1, (dt || 1 / 60) * 0.6);
       if (Math.abs(want - this.gateOpen) < 0.004) this.gateOpen = want;
       if (this.gateGroup) {
-        this.gateGroup.position.y = this._gateY0 + this.gateOpen * (YARD.wallH + 0.6);
+        /* Lift by the leaf's OWN height, not the design wall height — the
+           coping is level and the ground is not, so a gate on the downhill side
+           of the site is taller than 5.4 m and would still be blocking the road
+           after a 6 m lift. */
+        this.gateGroup.position.y = this._gateY0 + this.gateOpen * this._gateLift;
       }
     }
 

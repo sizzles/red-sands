@@ -512,11 +512,17 @@ export function hescoRun(B, F, M, x0, x1, z, y, o = {}) {
   const d = o.d || 0.95;
   const n = Math.max(1, Math.round((x1 - x0) / d));
   const cw = (x1 - x0) / n;
+  /* Baskets are individually seated on the ground under them. They are stacked
+     by hand in the real thing and they step down a slope one cell at a time;
+     running them off one datum leaves half the row buried and half in the air,
+     which on a 7% site is the first thing you notice. */
+  const yAt = o.yAt || (() => y);
   for (let i = 0; i < n; i++) {
     const a = x0 + i * cw, b = a + cw;
     const t = 0.86 + rand() * 0.28;
     const hh = h * (0.94 + rand() * 0.12);
-    B.box(M.gravel, F, a + 0.02, b - 0.02, z - d * 0.5, z + d * 0.5, y, y + hh, {
+    const y0 = yAt((a + b) * 0.5);
+    B.box(M.gravel, F, a + 0.02, b - 0.02, z - d * 0.5, z + d * 0.5, y0, y0 + hh, {
       us: IUV.gravel.us, vs: IUV.gravel.vs, wear, nu: 2, nv: 1,
       col: [0.56 * t, 0.52 * t, 0.44 * t],
     });
@@ -524,14 +530,14 @@ export function hescoRun(B, F, M, x0, x1, z, y, o = {}) {
     const wc = { us: 0.3, vs: 0.3, wear, col: [0.42, 0.40, 0.36] };
     for (const zz of [z - d * 0.5 - 0.01, z + d * 0.5 + 0.01]) {
       for (const xx of [a, b]) {
-        B.tube(M.rust, F.p(xx, zz, y), F.p(xx, zz, y + hh), 0.022, 0.022, 4, wc);
+        B.tube(M.rust, F.p(xx, zz, y0), F.p(xx, zz, y0 + hh), 0.022, 0.022, 4, wc);
       }
       for (const fy of [0.30, 0.72]) {
-        B.tube(M.rust, F.p(a, zz, y + hh * fy), F.p(b, zz, y + hh * fy), 0.018, 0.018, 4, wc);
+        B.tube(M.rust, F.p(a, zz, y0 + hh * fy), F.p(b, zz, y0 + hh * fy), 0.018, 0.018, 4, wc);
       }
     }
     /* spoil spilling over the top edge, so the cage looks filled not printed */
-    B.box(M.gravel, F, a + 0.06, b - 0.06, z - d * 0.42, z + d * 0.42, y + hh, y + hh + 0.07 * t, {
+    B.box(M.gravel, F, a + 0.06, b - 0.06, z - d * 0.42, z + d * 0.42, y0 + hh, y0 + hh + 0.07 * t, {
       us: IUV.gravel.us, vs: IUV.gravel.vs, wear, nu: 1, nv: 1,
       col: [0.60 * t, 0.55 * t, 0.46 * t],
     });

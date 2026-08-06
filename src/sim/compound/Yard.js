@@ -159,8 +159,12 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
      single fastest way to stop a wall reading as a wall and start it reading
      as a defensive work, and it is what a real field position actually has. */
   if (o.hesco !== false) {
-    hescoRun(B, W, M, 0.5, run - 0.5, -t * 0.5 - 0.72, -0.05,
-      { wear, rand: o.rand, h: 1.15, d: 1.0 });
+    hescoRun(B, W, M, 0.5, run - 0.5, -t * 0.5 - 0.72, -0.05, {
+      wear, rand: o.rand, h: 1.15, d: 1.0,
+      /* run-local x -> compound-local ground, so the revetment steps down the
+         slope with the site instead of hanging off one datum */
+      yAt: o.gAt ? (gx) => o.gAt(x0 + (dx / run) * gx, z0 + (dz / run) * gx) - 0.05 : null,
+    });
   }
 }
 
@@ -182,7 +186,36 @@ export function buildYard(site, rand, M, getH) {
   const F = new Frame(site.pos.x, site.pos.y, site.pos.z,
     Math.cos(site.yaw), -Math.sin(site.yaw));
 
-  const wear = [0, wallH + 2.0, 0.66, 0.32];
+  /*
+   * GROUND, and the single most important number in this file.
+   *
+   * `gAt` gives compound-local ground height at any local (x, z). The wide shot
+   * of the first build showed why it has to exist: everything was authored off
+   * one datum — the road point the site was chosen at — and the measured
+   * cross-fall under the footprint is 3.9 m over 52. So the uphill half of a
+   * 5.4 m curtain was buried and only about two metres of wall stood above the
+   * ground anywhere the player actually approaches from. The fortress read as a
+   * kerb with towers behind it.
+   *
+   * The fix is what a real perimeter wall does on a slope: the COPING IS LEVEL
+   * and the exposed height varies. Take the highest ground under the perimeter,
+   * put the top of the wall 5.4 m above THAT, and let the downhill runs stand
+   * taller. Nothing is ever shorter than the design height, the top is a single
+   * unbroken horizontal from any angle, and the footings absorb the rest.
+   */
+  const gAt = getH
+    ? (lx, lz) => { const w = F.p(lx, lz, 0); return getH(w[0], w[2]) - site.pos.y; }
+    : () => 0;
+  let hiG = 0;
+  for (let i = -halfX; i <= halfX; i += 4) {
+    hiG = Math.max(hiG, gAt(i, -halfZ), gAt(i, halfZ));
+  }
+  for (let j = -halfZ; j <= halfZ; j += 4) {
+    hiG = Math.max(hiG, gAt(-halfX, j), gAt(halfX, j));
+  }
+  const wallTop = hiG + wallH;
+
+  const wear = [0, wallTop + 2.0, 0.66, 0.32];
   B.wear = wear;
 
   /*
@@ -218,7 +251,7 @@ export function buildYard(site, rand, M, getH) {
   /* ---- perimeter. The road enters on -Z and leaves on +Z, so the gap is in
      the +Z wall and the gate closes it. The back wall is solid: the way you
      came in is not the way out. */
-  const ro = { wear, h: wallH, rand, col: CONC };
+  const ro = { wear, h: wallTop, rand, col: CONC, gAt };
   /* Walked anticlockwise seen from above, without exception — see wallRun. */
   wallRun(B, F, M, -halfX, -halfZ, -halfX, halfZ, ro);
   wallRun(B, F, M, -halfX, halfZ, -gateW * 0.5, halfZ, ro);
@@ -229,9 +262,9 @@ export function buildYard(site, rand, M, getH) {
   /* gate piers, heavier than the curtain either side of the opening */
   for (const s of [-1, 1]) {
     const px = s * (gateW * 0.5 + 0.55);
-    B.box(M.concrete, F, px - 0.62, px + 0.62, halfZ - 0.75, halfZ + 0.75, -FOOT, wallH + 0.55,
+    B.box(M.concrete, F, px - 0.62, px + 0.62, halfZ - 0.75, halfZ + 0.75, -FOOT, wallTop + 0.62,
       { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 1.03, CONC[1] * 1.02, CONC[2] * 1.0] });
-    B.box(M.concrete, F, px - 0.78, px + 0.78, halfZ - 0.92, halfZ + 0.92, wallH + 0.55, wallH + 0.78,
+    B.box(M.concrete, F, px - 0.78, px + 0.78, halfZ - 0.92, halfZ + 0.92, wallTop + 0.62, wallTop + 0.86,
       { us: IUV.concrete.us, vs: 0.35, wear, col: [0.86, 0.85, 0.81], nv: 1 });
   }
 
@@ -244,7 +277,8 @@ export function buildYard(site, rand, M, getH) {
        the yard would leave the other three dark. */
     const k = Math.SQRT1_2;
     const T = F.sub(x, z, 0, Math.atan2(-sx * k, sz * k));
-    const r = guardTower(B, T, M, { h: 15.5, r: 1.55, rand, ground: 0 });
+    const tg = gAt(x, z);
+    const r = guardTower(B, T, M, { h: 15.5 + (hiG - tg), r: 1.55, rand, ground: tg });
     lamps.push({ x: x + sx * k * r.lampZ, z: z + sz * k * r.lampZ, y: r.lampY });
   }
 
@@ -253,29 +287,30 @@ export function buildYard(site, rand, M, getH) {
      a 5.4 m wall none of it was visible from any approach angle. */
   const barracks = F.sub(-16.5, -12.0, 0, 0);
   buildBlockhouse(B, barracks, M, {
-    w: 13, d: 7.5, h: 6.2, bay: 3.25, roof: 'iron',
+    w: 13, d: 7.5, h: 6.2, bay: 3.25, roof: 'iron', ground: gAt(-10, -8),
     bays: ['vent', 'door', 'vent', 'vent'], grime: 0.66,
   }, rand);
 
   const depot = F.sub(7.5, -11.0, 0, 0);
   buildBlockhouse(B, depot, M, {
-    w: 11, d: 9.0, h: 6.6, bay: 5.5, roof: 'flat',
+    w: 11, d: 9.0, h: 6.6, bay: 5.5, roof: 'flat', ground: gAt(13, -6),
     bays: ['shutter', 'vent'], shutterOpen: 0.62, grime: 0.72, bags: false,
   }, rand);
 
   /* the radio mast off the depot — the tallest thing in the valley after the
      towers, and the silhouette that identifies the place from a ridge */
-  latticeMast(B, F, M, 20.5, -4.0, 0, 17.5, { wear: [0, 18, 0.6, 0.3] });
+  latticeMast(B, F, M, 20.5, -4.0, gAt(20.5, -4.0), 17.5, { wear: [0, 18, 0.6, 0.3] });
 
   /* ---- yard plant. Fuel bowsers against the depot, drums, a generator. */
   for (let i = 0; i < 3; i++) {
     const bz = -9.5 + i * 3.4;
-    B.box(M.rust, F, 3.4, 5.0, bz - 0.75, bz + 0.75, 0.12, 2.05,
+    const by = gAt(4.2, bz);
+    B.box(M.rust, F, 3.4, 5.0, bz - 0.75, bz + 0.75, by + 0.12, by + 2.05,
       { us: IUV.steel.us, vs: IUV.steel.vs, wear, col: [0.46, 0.48, 0.44] });
-    B.box(M.rust, F, 3.3, 5.1, bz - 0.86, bz + 0.86, 2.05, 2.22,
+    B.box(M.rust, F, 3.3, 5.1, bz - 0.86, bz + 0.86, by + 2.05, by + 2.22,
       { us: 0.4, vs: 0.3, wear, col: [0.40, 0.42, 0.39], nv: 1 });
   }
-  const gy = 0.0;
+  const gy = gAt(-0.9, 7.0);
   B.box(M.iron, F, -2.6, 0.8, 6.0, 8.0, gy, gy + 1.35,
     { us: IUV.iron.us, vs: IUV.iron.vs, wear, col: [0.54, 0.55, 0.50] });
   B.box(M.rust, F, -2.7, 0.9, 5.9, 8.1, gy + 1.35, gy + 1.50,
@@ -283,40 +318,47 @@ export function buildYard(site, rand, M, getH) {
   B.tube(M.rust, F.p(0.2, 7.9, gy + 1.5), F.p(0.2, 7.9, gy + 2.6), 0.075, 0.070, 6,
     { us: 0.3, vs: 0.5, wear, col: [0.46, 0.42, 0.36], caps: true });
   for (const [dx, dz] of [[-5.2, 8.4], [-4.4, 9.1], [-5.9, 9.3], [13.5, 6.2], [14.4, 6.9]]) {
-    drum(B, F, M, dx, dz, 0.06, { wear, col: rand() > 0.5 ? [0.42, 0.46, 0.40] : [0.50, 0.36, 0.26] });
+    drum(B, F, M, dx, dz, gAt(dx, dz) + 0.06, { wear, col: rand() > 0.5 ? [0.42, 0.46, 0.40] : [0.50, 0.36, 0.26] });
   }
 
   /* ---- fighting positions the garrison holds, and where they stand. */
   const posts = [];
   for (const [px, pz] of [[-14, 12], [14, 12], [-7, 2], [9, 3], [0, -14]]) {
     const jx = px + (rand() - 0.5) * 2.4, jz = pz + (rand() - 0.5) * 2.4;
+    const py = gAt(jx, jz);
     const P = F.sub(jx, jz, 0, 0);
-    sandbagCourse(B, P, M, -2.5, 2.5, 1.15, 0.02, { wear, rand, rows: 4 });
-    sandbagCourse(B, P, M, -2.5, -1.7, 0.30, 0.02, { wear, rand, rows: 4 });
-    sandbagCourse(B, P, M, 1.7, 2.5, 0.30, 0.02, { wear, rand, rows: 4 });
+    sandbagCourse(B, P, M, -2.5, 2.5, 1.15, py + 0.02, { wear, rand, rows: 4 });
+    sandbagCourse(B, P, M, -2.5, -1.7, 0.30, py + 0.02, { wear, rand, rows: 4 });
+    sandbagCourse(B, P, M, 1.7, 2.5, 0.30, py + 0.02, { wear, rand, rows: 4 });
     posts.push({ x: jx, z: jz });
   }
 
   /* ---- THE GATE, in its own builder so the whole thing can be raised. Built
      about the gate's own origin; the caller places the group. */
   const GF = new Frame(0, 0, 0, 1, 0);
-  const gw = [0, wallH + 1.0, 0.72, 0.40];
+  /* The leaves span from the road surface under the opening up to the same
+     level coping as the wall, so a gate on a slope is a taller gate — which is
+     what the hinges would actually have to carry. */
+  const gBase = gAt(0, halfZ) - 0.06;
+  const gateH = wallTop - gBase;
+  const gw = [gBase, wallTop + 1.0, 0.72, 0.40];
   for (const s of [-1, 1]) {
     const x0 = s > 0 ? 0.05 : -gateW * 0.5;
     const x1 = s > 0 ? gateW * 0.5 : -0.05;
     /* frame: a heavy perimeter angle with a corrugated infill and one diagonal
        brace, which is what a fabricated gate leaf actually is */
     const fc = { us: IUV.steel.us, vs: 0.35, wear: gw, col: [0.40, 0.41, 0.40], nv: 1 };
-    G.box(M.rust, GF, x0, x1, -0.10, 0.10, 0, 0.22, fc);
-    G.box(M.rust, GF, x0, x1, -0.10, 0.10, wallH - 0.22, wallH, fc);
-    G.box(M.rust, GF, x0, x0 + 0.20, -0.10, 0.10, 0, wallH, fc);
-    G.box(M.rust, GF, x1 - 0.20, x1, -0.10, 0.10, 0, wallH, fc);
-    G.box(M.iron, GF, x0 + 0.18, x1 - 0.18, -0.045, 0.045, 0.20, wallH - 0.20,
+    G.box(M.rust, GF, x0, x1, -0.10, 0.10, gBase, gBase + 0.22, fc);
+    G.box(M.rust, GF, x0, x1, -0.10, 0.10, wallTop - 0.22, wallTop, fc);
+    G.box(M.rust, GF, x0, x0 + 0.20, -0.10, 0.10, gBase, wallTop, fc);
+    G.box(M.rust, GF, x1 - 0.20, x1, -0.10, 0.10, gBase, wallTop, fc);
+    G.box(M.iron, GF, x0 + 0.18, x1 - 0.18, -0.045, 0.045, gBase + 0.20, wallTop - 0.20,
       { us: IUV.iron.us, vs: IUV.iron.vs, rot: 1, wear: gw, col: [0.56, 0.55, 0.51] });
-    G.tube(M.rust, GF.p(x0 + 0.2, -0.11, 0.25), GF.p(x1 - 0.2, -0.11, wallH - 0.25),
+    G.tube(M.rust, GF.p(x0 + 0.2, -0.11, gBase + 0.25), GF.p(x1 - 0.2, -0.11, wallTop - 0.25),
       0.055, 0.055, 4, { us: 0.4, vs: 0.5, wear: gw, col: [0.44, 0.45, 0.44] });
     /* a hazard chevron band across the middle of each leaf */
-    G.box(M.rust, GF, x0 + 0.18, x1 - 0.18, -0.075, -0.05, wallH * 0.44, wallH * 0.60,
+    G.box(M.rust, GF, x0 + 0.18, x1 - 0.18, -0.075, -0.05,
+      gBase + gateH * 0.44, gBase + gateH * 0.60,
       { us: 0.5, vs: 0.25, wear: gw, col: [0.78, 0.62, 0.16], nv: 1 });
   }
 
@@ -326,6 +368,8 @@ export function buildYard(site, rand, M, getH) {
     lamps,
     posts,
     gateAt: { x: 0, z: halfZ, y: 0 },
+    gateH,
+    wallTop,
     stats: B.stats(),
   };
 }
