@@ -823,7 +823,23 @@ export class Physics {
          * above your feet and shoves you straight back off it. You would climb
          * nothing, forever, and it would read as the stair being too steep.
          */
-        if (c.walkable && stepH > 0 && c.maxY <= p.y + stepH) continue;
+        if (c.walkable) {
+          /* steppable: it is a floor you are about to be on */
+          if (stepH > 0 && c.maxY <= p.y + stepH) continue;
+          /*
+           * OVERHEAD: its underside is above your feet, so you are below it —
+           * and a walkable surface never blocks you from below. It only holds
+           * you up from above.
+           *
+           * Without this, a wall walk 3.9 m up shoves anybody climbing the
+           * stair toward it sideways off the flight the moment their HEAD
+           * enters its vertical span, which is 1.6 m before their feet are
+           * close enough for the steppable case to fire. Measured: the climb
+           * test gained 3.76 m of the 5.67 it needed and then fell, and it fell
+           * at exactly stepTop minus capsule height.
+           */
+          if (c.minY >= p.y + 0.05) continue;
+        }
         const q = c.position;
         let nx, nz, pen;
         if (c.shape === 'box') {
