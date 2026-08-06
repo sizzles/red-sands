@@ -23,6 +23,7 @@ import { Riven } from './sim/Riven.js';
 import { Cordon } from './sim/Cordon.js';
 import { Garage } from './sim/Garage.js';
 import { Compound } from './sim/Compound.js';
+import { CompoundSite } from './sim/CompoundSite.js';
 import { Loot } from './sim/Loot.js';
 import { CameraRig } from './player/CameraRig.js';
 import { PostFX } from './render/PostFX.js';
@@ -55,6 +56,7 @@ const S = [
   [new Cordon(ctx),      87],
   [new Loot(ctx),        88],
   [new Garage(ctx),      89],
+  [new CompoundSite(ctx), 36],
   [new Compound(ctx),    91],
   [new CameraRig(ctx),   90],
   [new ProcTextures(ctx), 1],

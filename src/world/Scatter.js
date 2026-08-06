@@ -1155,6 +1155,18 @@ export class Scatter {
           if (cx * cx + cz * cz < this._campR2) continue;
         }
         /*
+         * COMPOUND KEEP-OUT. Same argument again, two scales up. Scatter runs
+         * at 45 and the compound cannot build until 91, so the boulder lattice
+         * had no idea the position existed — and put a two-storey glacial
+         * erratic hard against the curtain wall, occluding a third of the
+         * fortress in every shot taken of it. CompoundSite publishes the
+         * footprint at 36 for exactly this test.
+         */
+        if (this._cmpR2 > 0) {
+          const mx = x - this._cmpX, mz = z - this._cmpZ;
+          if (mx * mx + mz * mz < this._cmpR2) continue;
+        }
+        /*
          * TOWN KEEP-OUT. Same argument as the camp, one scale up: pass-9
          * town_street had creosote bushes standing between the wheel ruts of
          * Main Street, which reads worse than an empty street because it says
@@ -1254,6 +1266,12 @@ export class Scatter {
       this._campZ = c ? c.z : 0;
       this._campR2 = c ? (rad * 1.30) * (rad * 1.30) : 0;
       this._townOnStreet = (town && town.site && town.site.onStreet) || null;
+    }
+    if (this._cmpR2 === undefined) {
+      const cs = this.ctx.poi.get('compound_site');
+      this._cmpX = cs ? cs.pos.x : 0;
+      this._cmpZ = cs ? cs.pos.z : 0;
+      this._cmpR2 = cs ? cs.clear * cs.clear : 0;
     }
     for (const kind of this.kinds.values()) kind.reset();
     if (this.bedding) this.bedding.begin(ox, oz);

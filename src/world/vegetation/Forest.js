@@ -502,6 +502,12 @@ export class Forest {
 
     const KIND = this.kindIndex;   // { species: [kindIdx, ...] }
 
+    /* Compound keep-out, resolved once rather than per tree. */
+    const cpoi = this.ctx && this.ctx.poi ? this.ctx.poi.get('compound_site') : null;
+    const cpX = cpoi ? cpoi.pos.x : null;
+    const cpZ = cpoi ? cpoi.pos.z : 0;
+    const cpR2 = cpoi ? cpoi.clear * cpoi.clear : 0;
+
     for (let j = 0; j < res; j++) {
       const z0 = -half + j * cell;
       for (let i = 0; i < res; i++) {
@@ -530,6 +536,18 @@ export class Forest {
           if (roadD2) {
             const rd2 = roadD2(x, z);
             if (rd2 < ROAD_CLEAR * ROAD_CLEAR) continue;
+          }
+          /*
+           * NOR IN THE COMPOUND'S FIELD OF FIRE. Published by CompoundSite at
+           * order 36 precisely so this test can exist — Compound itself cannot
+           * init until after the Cordon, by which time these trees are already
+           * standing. A garrison that has not felled the timber around its own
+           * walls is not a garrison anyone would be afraid of, and in practice
+           * the first build had pines growing on the parade ground.
+           */
+          if (cpX !== null) {
+            const cdx = x - cpX, cdz = z - cpZ;
+            if (cdx * cdx + cdz * cdz < cpR2) continue;
           }
           const sl = maps.sample(maps.slope, x, z);
           if (sl < 0.44) continue;
