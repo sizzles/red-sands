@@ -44,7 +44,8 @@ export class MySystem {
 ```
 
 Registered ids: `procTextures timeOfDay weather terrain water roads vegetation
-scatter town lighting sky clouds particles physics player bike wildlife riven cordon
+scatter town lighting sky clouds particles physics player bike wildlife riven
+cordon garage compound
 loot camera postfx audio hud touch`. Reach another system with
 `ctx.get('terrain')`.
 
@@ -75,7 +76,7 @@ Full field list lives in `src/core/Context.js` — read it. Summary of ownership
 `ready`, `teleport`, `playerTeleported`, `weatherChange`, `lightning`,
 `hourChange`, `footstep`, `mount`, `dismount`, `mountBeat`, `gunshot`,
 `bikeStart`, `bikeStall`, `rivenHit`, `rivenKilled`, `cordonHit`, `cordonKilled`,
-`looted`,
+`looted`, `upgraded`, `compoundCleared`, `escaped`,
 `refuelled`.
 
 `ctx.player.horse` still carries that name — it is a frozen field half a dozen
@@ -261,6 +262,32 @@ L.dropFrom(pos, kind);   // something died carrying something
 `Weapon.reserve` is reconciled against `inventory.ammo` every frame by Loot —
 the weapon never learns an inventory exists and the inventory never has to
 understand a reload.
+
+### 4.10b `garage` / `compound` — progression and the ending
+
+```js
+const G = ctx.get('garage');
+G.mult('baffle');        // the multiplier a track currently supplies
+G.costOf('tank');        // scrap for the next level, or null if maxed
+G.nearest();             // the workbench in range, or null
+G.buy(track);            // spends scrap; refuses away from a bench
+G.readiness();           // 0..1 across all tracks
+
+const C = ctx.get('compound');
+C.status();              // { seen, distance, defenders, cleared, escaped }
+```
+
+Tracks are `tank economy baffle gearing tyres`. Bike reads tank/economy/gearing/
+tyres each fixed step; **Riven reads `baffle` inside `_playerNoise()`**, which is
+what makes it a stealth upgrade rather than a stat.
+
+The compound garrisons itself through `Cordon.addPost(pos, yaw, size, tag)`
+rather than growing a second soldier AI — same faction, same rules, so what the
+player learned at a highway checkpoint still applies at the last fight. Posts
+tagged `'compound'` get no roadblock built on them.
+
+There is deliberately NO experience or level system. If you are tempted to add
+one, read the header of Garage.js first.
 
 ### 4.11 `roads`
 

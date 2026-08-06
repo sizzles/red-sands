@@ -354,9 +354,24 @@ export class Riven {
     const pl = ctx.get('player');
     const bike = ctx.get('bike');
     if (ctx.player.mode === 'mounted' && bike && bike.running) {
-      /* The engine dominates completely. Even at idle it is louder than a man
-         sprinting; pinned, it is heard the better part of a kilometre away. */
-      return 6 + (bike.throttle || 0) * 8;
+      /*
+       * The engine dominates completely. Even at idle it is louder than a man
+       * sprinting; pinned, it is heard the better part of a kilometre away.
+       *
+       * BAFFLES ARE THE ONE UPGRADE THAT CHANGES THE GAME RATHER THAN THE
+       * NUMBERS. Everything else the garage sells makes the bike better at
+       * what it already does; this makes the WORLD respond to it differently,
+       * because every perception test in this file is keyed on the value
+       * returned here. Measured at full baffling: 2.4 at idle, which is a man
+       * sprinting, and 5.6 pinned, against 14 stock. So it never makes the bike
+       * quiet — you cannot sneak past anything at full throttle and you are not
+       * meant to be able to — but it turns rolling on a closed throttle into a
+       * genuine option, and a player who has bought it is playing a stealth
+       * game on a motorcycle, which no other upgrade can offer.
+       */
+      const G = ctx.get('garage');
+      const baffle = G ? G.mult('baffle') : 1;
+      return (6 + (bike.throttle || 0) * 8) * baffle;
     }
     const sp = ctx.player.speed01 || 0;
     if (pl && pl.crouch > 0.5) return 0.25 + sp * 0.5;

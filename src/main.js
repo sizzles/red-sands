@@ -21,6 +21,8 @@ import { Bike } from './player/Bike.js';
 import { Wildlife } from './sim/Wildlife.js';
 import { Riven } from './sim/Riven.js';
 import { Cordon } from './sim/Cordon.js';
+import { Garage } from './sim/Garage.js';
+import { Compound } from './sim/Compound.js';
 import { Loot } from './sim/Loot.js';
 import { CameraRig } from './player/CameraRig.js';
 import { PostFX } from './render/PostFX.js';
@@ -52,6 +54,8 @@ const S = [
   [new Riven(ctx),       86],
   [new Cordon(ctx),      87],
   [new Loot(ctx),        88],
+  [new Garage(ctx),      89],
+  [new Compound(ctx),    91],
   [new CameraRig(ctx),   90],
   [new ProcTextures(ctx), 1],
   [new Terrain(ctx),     20],
@@ -85,7 +89,8 @@ const LABELS = {
   physics: 'setting the rules', player: 'waking the drifter',
   bike: 'kicking it over', wildlife: 'releasing the herds',
   riven: 'listening for the horde', cordon: 'manning the checkpoints',
-  loot: 'hiding the caches',
+  loot: 'hiding the caches', garage: 'laying out the tools',
+  compound: 'closing the pass',
   camera: 'framing the shot', postfx: 'grading the film',
   audio: 'tuning the wind', hud: 'final touches', touch: 'final touches', ready: 'ready',
 };

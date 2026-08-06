@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Regions, timePhrase } from './Regions.js';
 import { PauseMenu } from './PauseMenu.js';
 import { MOUNT_RANGE } from '../player/Bike.js';
+import { TRACKS, TRACK_KEYS } from '../sim/Garage.js';
 
 /**
  * ============================================================================
@@ -75,6 +76,10 @@ export class HUD {
        * while anything is actually hunting. Same discipline as everything
        * else here: neither exists when it has nothing to say. */
       ride: 0, threat: 0,
+      /** The workbench panel. */
+      garage: 0,
+      /** The objective line, once the compound has been seen. */
+      goal: 0,
     };
     /** Hit feedback on the reticle. -1 = nothing has been hit. */
     this._hitT = -1;
@@ -345,6 +350,9 @@ export class HUD {
     this._noise = RV ? (RV.noise || 0) : 0;
     const CD = ctx.get('cordon');
     this._engaged = CD ? (CD.engaged || 0) : 0;
+    this._garage = ctx.get('garage');
+    const CP = ctx.get('compound');
+    this._goal = CP && CP.status ? CP.status() : null;
     this._threatHold = (this._hunting > 0 || this._engaged > 0)
       ? 2.6 : Math.max(0, (this._threatHold || 0) - dt);
 
@@ -418,12 +426,15 @@ export class HUD {
        * one loses you, so it does not flicker while a pack circles.
        */
       threat: (!paused && this._threatHold > 0) ? 1 : 0,
+      garage: (!paused && this._garage && this._garage.open) ? 1 : 0,
+      goal: (!paused && this._goal && this._goal.seen && !this._goal.escaped
+        && this._goal.distance < 700) ? 1 : 0,
     };
     const rate = {
       compass: [3.6, 1.1], cores: [4.5, 0.9], prompt: [7, 3], title: [1, 1],
       hint: [1.2, 3], notice: [6, 2], keys: [1.6, 0.8], lock: [1.8, 1.6],
       weapon: [8, 1.6], reticle: [12, 9], wanted: [5, 1.0], skin: [9, 5],
-      ride: [5, 1.4], threat: [9, 0.8],
+      ride: [5, 1.4], threat: [9, 0.8], garage: [11, 9], goal: [3, 1.2],
     };
     for (const k in this.a) {
       const t = target[k];
@@ -479,6 +490,13 @@ export class HUD {
     if (pl && pl.skinning) { this._promptT = 0; return; }
     if (pl && pl.pickup) {
       this._prompt = { key: 'E', label: `Take ${pl.pickup.label}` };
+      this._promptT = 0.3;
+      return;
+    }
+    const bench = this._garage && this._garage.nearest ? this._garage.nearest() : null;
+    if (bench && ctx.player.mode === 'onFoot') {
+      const scrap = (ctx.get('loot') || { inventory: {} }).inventory.scrap || 0;
+      this._prompt = { key: 'E', label: `Work on the bike  ·  ${scrap} scrap` };
       this._promptT = 0.3;
       return;
     }
@@ -575,6 +593,8 @@ export class HUD {
     if (this.a.cores > 0.004) this._drawCores(c, W, H, s, this.a.cores * G);
     if (this.a.ride > 0.004) this._drawRide(c, W, H, s, this.a.ride * G);
     if (this.a.threat > 0.004) this._drawThreat(c, W, H, s, this.a.threat * G);
+    if (this.a.goal > 0.004) this._drawGoal(c, W, H, s, this.a.goal * G);
+    if (this.a.garage > 0.004) this._drawGarage(c, W, H, s, this.a.garage * G);
     if (this.a.title > 0.004) this._drawTitle(c, W, H, s, this.a.title * G);
     /* The three centred lines are a stack, not three fixed positions. Each one
      * that draws pushes the ceiling up for the next, so when the control hints
@@ -1338,6 +1358,119 @@ export class HUD {
       this._hairline(c, bx, by, bx + bw * noise, by,
         noise > 0.4 ? HIT_ORANGE : INK, 0.68 * A, Math.max(1, 1.8 * s));
     }
+  }
+
+  /**
+   * THE OBJECTIVE, and it is the only one the game has.
+   *
+   * Deliberately not a quest log and not a waypoint arrow: one line, only near
+   * the compound, saying how many are left. That number is the whole objective
+   * — nobody needs to be told to shoot them — and it doubles as the readiness
+   * assessment the game refuses to enforce. A player who rides up, reads
+   * ELEVEN LEFT with nine rounds in their pack, and turns round has understood
+   * everything the design wanted them to understand, without a gate or a level
+   * requirement telling them so.
+   */
+  _drawGoal(c, W, H, s, A) {
+    const g = this._goal;
+    if (!g) return;
+    const y = 86 * s;
+    if (g.cleared) {
+      this._text(c, 'THE GATE IS OPEN', W * 0.5, y, {
+        size: 12 * s, colour: GOLD, alpha: 0.88 * A, align: 'center', track: 0.30,
+      });
+      this._text(c, 'RIDE OUT', W * 0.5, y + 14 * s, {
+        size: 8.5 * s, colour: INK_DIM, alpha: 0.60 * A, align: 'center', track: 0.24,
+      });
+      return;
+    }
+    this._text(c, 'THE PASS', W * 0.5, y, {
+      size: 11 * s, colour: INK, alpha: 0.72 * A, align: 'center', track: 0.30,
+    });
+    const n = g.defenders | 0;
+    this._text(c, n > 0 ? `${n} HOLDING IT` : 'QUIET', W * 0.5, y + 14 * s, {
+      size: 9 * s, colour: n > 6 ? BLOOD : INK_DIM,
+      alpha: 0.66 * A, align: 'center', track: 0.22,
+    });
+  }
+
+  /**
+   * THE WORKBENCH.
+   *
+   * A list, not a tree. Five rows, each with its level as pips, what it does in
+   * four words, and what the next one costs — and a number key to buy it. No
+   * cursor, no tabs, no confirmation: this panel is read at a glance by someone
+   * who is probably being approached, and every extra interaction between
+   * "I want that" and having it is a second spent looking at a menu instead of
+   * at the treeline.
+   *
+   * Rows you cannot afford stay legible rather than greying out, because the
+   * thing a player most needs from a shop they cannot use yet is to know what
+   * to go and get.
+   */
+  _drawGarage(c, W, H, s, A) {
+    const G = this._garage;
+    if (!G) return;
+    const loot = this.ctx.get('loot');
+    const scrap = loot ? (loot.inventory.scrap || 0) : 0;
+
+    const rowH = 30 * s;
+    const panelW = Math.min(W * 0.72, 460 * s);
+    const panelH = rowH * TRACK_KEYS.length + 74 * s;
+    const x0 = (W - panelW) * 0.5;
+    const y0 = (H - panelH) * 0.5;
+
+    this._shade(c, W * 0.5, H * 0.5, panelW * 0.62, panelH * 0.62, 0.52 * A);
+
+    this._text(c, 'THE BIKE', W * 0.5, y0 + 24 * s, {
+      size: 15 * s, colour: INK, alpha: 0.92 * A, align: 'center', track: 0.34,
+    });
+    this._text(c, `${scrap} SCRAP`, W * 0.5, y0 + 41 * s, {
+      size: 9.5 * s, colour: GOLD, alpha: 0.80 * A, align: 'center', track: 0.22,
+    });
+    this._hairline(c, x0 + 18 * s, y0 + 50 * s, x0 + panelW - 18 * s, y0 + 50 * s,
+      INK_DIM, 0.22 * A, Math.max(1, 1.2 * s));
+
+    for (let i = 0; i < TRACK_KEYS.length; i++) {
+      const k = TRACK_KEYS[i];
+      const T = TRACKS[k];
+      const lvl = G.levels[k] || 0;
+      const cost = G.costOf(k);
+      const y = y0 + 70 * s + i * rowH;
+      const maxed = cost == null;
+      const afford = !maxed && scrap >= cost;
+
+      /* The number you press, boxed, so the row reads as actionable. */
+      this._text(c, String(i + 1), x0 + 26 * s, y, {
+        size: 12 * s, colour: afford ? GOLD : INK_DIM,
+        alpha: (afford ? 0.95 : 0.45) * A, align: 'center',
+      });
+      this._text(c, T.label.toUpperCase(), x0 + 48 * s, y, {
+        size: 11.5 * s, colour: INK, alpha: 0.88 * A, track: 0.16,
+      });
+      this._text(c, T.blurb, x0 + 48 * s, y + 11 * s, {
+        size: 8.5 * s, colour: INK_DIM, alpha: 0.52 * A, track: 0.10,
+      });
+
+      /* Level as pips — three filled squares reads as "done" far faster than
+         the word MAX does. */
+      const pips = T.mult.length - 1;
+      for (let p = 0; p < pips; p++) {
+        const px = x0 + panelW - 118 * s + p * 13 * s;
+        const on = p < lvl;
+        c.fillStyle = rgba(on ? GOLD : INK_DIM, (on ? 0.85 : 0.22) * A);
+        c.fillRect(px, y - 7 * s, 8 * s, 8 * s);
+      }
+
+      this._text(c, maxed ? '—' : String(cost), x0 + panelW - 34 * s, y, {
+        size: 11 * s, colour: maxed ? INK_DIM : (afford ? GOLD : BLOOD),
+        alpha: (maxed ? 0.4 : 0.85) * A, align: 'center',
+      });
+    }
+
+    this._text(c, 'E  CLOSE', W * 0.5, y0 + panelH - 14 * s, {
+      size: 9 * s, colour: INK_DIM, alpha: 0.55 * A, align: 'center', track: 0.24,
+    });
   }
 
   _arc(c, x, y, r, v, colour, A, s) {

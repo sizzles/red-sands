@@ -220,6 +220,26 @@ export class Cordon {
     }
   }
 
+  /**
+   * Register a manned position from outside this system.
+   *
+   * The Compound uses this to garrison itself rather than growing a second
+   * soldier AI: it is the same faction with the same behaviour, and the only
+   * thing that makes the last fight different is how many of them there are.
+   * Every rule the player learned at a highway checkpoint therefore still
+   * applies at the end of the game, which is what the last fight should test.
+   *
+   * `tag` marks posts that should not get a roadblock built on them — the
+   * compound has its own walls.
+   */
+  addPost(pos, yaw, size = 3, tag = null) {
+    this._posts.push({
+      pos: pos.clone(), yaw, size,
+      tag, noBlock: tag === 'compound',
+    });
+    return this._posts[this._posts.length - 1];
+  }
+
   _buildRoadblocks() {
     if (!this._posts.length) return;
     const ctx = this.ctx;
@@ -231,14 +251,16 @@ export class Cordon {
       : new THREE.MeshStandardMaterial({ color: 0x4a4a46, roughness: 0.94 });
     this.blockMat = mat;
 
+    const sited = this._posts.filter((p) => !p.noBlock);
+    if (!sited.length) return;
     const geo = buildRoadblock(this.rand);
-    const mesh = new THREE.InstancedMesh(geo, mat, this._posts.length);
+    const mesh = new THREE.InstancedMesh(geo, mat, sited.length);
     mesh.name = 'cordon:roadblock';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
-    for (let i = 0; i < this._posts.length; i++) {
-      const p = this._posts[i];
+    for (let i = 0; i < sited.length; i++) {
+      const p = sited[i];
       _q.setFromAxisAngle(_UP, p.yaw);
       _m.compose(p.pos, _q, _s);
       mesh.setMatrixAt(i, _m);

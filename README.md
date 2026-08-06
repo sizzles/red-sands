@@ -47,6 +47,7 @@ touch controls appear on their own.
 | **E** | get on the bike · loot a stash · skin a carcass |
 | **L** | headlight |
 | **F** | pour a fuel can into the tank |
+| **E** *(at a workbench)* | open the bike panel — **1**–**5** buy upgrades |
 | **Q** | use a bandage |
 | **Right mouse** | raise the rifle |
 | **Left mouse** | fire |
@@ -95,7 +96,15 @@ part of a station you will ever spot in time to stop.
 
 ## The loop
 
-Three numbers, and they pull against each other:
+```
+RIDE  (burn fuel, make noise)
+ └→ SCAVENGE stashes, take checkpoints         (fuel, ammo, scrap)
+     └→ UPGRADE the bike at a workbench         (range · quiet · speed · grip)
+         └→ reach further, hit richer targets
+             └→ THE PASS: the compound. One road out.
+```
+
+Three numbers pull against each other:
 
 - **Fuel.** A full tank is about four minutes of hard riding. Jerry cans are scattered
   across the map at fixed positions, and there are never quite enough.
@@ -106,6 +115,50 @@ Three numbers, and they pull against each other:
   numbers make it real.
 - **Ammunition.** Every round you fire is one you had to find, and firing a rifle wakes
   everything inside 220 metres. A gun is what you use when the plan has already failed.
+
+**Everything depletes one way.** Stations hold three tanks and never refill,
+stashes are looted once. The third hour is a longer ride than the first, and the
+garage is the only thing that pushes back — which is why it exists.
+
+### The garage
+
+Scrap buys five things, and each one feeds a system that already exists rather
+than raising a number in isolation:
+
+| | |
+|---|---|
+| **Tank** | further between stations — buys reach |
+| **Economy** | the same tank goes further — buys the *slope of the curve* |
+| **Baffles** | a quieter exhaust — buys **stealth** |
+| **Gearing** | top speed — deliberately the smallest effect |
+| **Tyres** | grip off-road — buys the ability to stop needing the Cordon's roads |
+
+Baffles are the interesting one. Every Riven perception test is keyed on `noise`,
+so this is the only upgrade that changes what the world does to *you* rather than
+what you can do to it. Measured: 14 stock at full throttle, 5.6 fully baffled, and
+2.4 at idle — a man sprinting. It never makes the bike quiet, and is not meant to;
+it makes rolling on a closed throttle a real option. Two of the five upgrades buy
+the ability to *avoid* content, which is on purpose.
+
+There is no experience system and there should not be. The player has no stats to
+raise, so a level would be a second progression track competing with the machine
+for the same scrap — and worse, XP pays you for kills, which argues the exact
+opposite of everything the noise model says.
+
+### The end
+
+The Cordon's own position sits at the head of the pass, built across the only road
+out of the valley. It is not gated on a level or a key: it is open from the first
+minute and will simply kill you. Readiness is measured the honest way — the fuel to
+get there and back, the ammo to get through, and how much bike you have bought. The
+HUD tells you how many are holding it and lets you decide.
+
+The gate opens when the yard is empty. Ride through and the game is over.
+
+And the Riven are invited: a dozen rifles firing in the open is the loudest thing
+that has ever happened in this valley, and every trigger pull alarms them at 260 m.
+Nobody scripted a third act — it arrives on its own, and the honest way to take the
+place may well be to start the fight and then leave.
 
 The cruelty is emergent rather than authored: the model that decides where a nest goes
 and the model that decides where a stash goes are *both* "somewhere sheltered a person
@@ -273,14 +326,15 @@ rather than being reimplemented and drifting.
 
 ## Architecture
 
-Twenty-four systems on a fixed lifecycle, sharing one frozen context object:
+Twenty-six systems on a fixed lifecycle, sharing one frozen context object:
 
 ```
 src/core/       Engine, Context (the shared contract), Config
 src/materials/  procedural PBR library + worker bake pool
 src/world/      Terrain · Roads · Vegetation · Scatter · Town
 src/render/     Sky · Clouds · Water · Lighting · Particles · PostFX
-src/sim/        TimeOfDay · Weather · Physics · Wildlife · Riven · Cordon · Loot
+src/sim/        TimeOfDay · Weather · Physics · Wildlife
+                Riven · Cordon · Loot · Garage · Compound
 src/player/     Player · Bike · Weapon · CameraRig
 src/audio/      synthesised beds + foley
 src/ui/         HUD · TouchControls

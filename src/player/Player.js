@@ -548,6 +548,17 @@ export class Player {
        * pump and picked up some scrap" is the kind of small betrayal that
        * makes an interaction system feel untrustworthy.
        */
+      /*
+       * The workbench outranks the pumps, which outrank a stash. A bench is
+       * always somewhere you chose to stop; the other two you tend to be
+       * standing near by accident.
+       */
+      const garage = this.ctx.get('garage');
+      if (garage && garage.nearest && garage.nearest()) {
+        if (garage.open) garage.close(); else garage.openPanel();
+        this._actionClaimed = this.ctx.time.frame;
+        return;
+      }
       const roads = this.ctx.get('roads');
       const pump = roads && roads.nearestStation ? roads.nearestStation() : null;
       if (pump) {
@@ -632,6 +643,15 @@ export class Player {
      * disabled all movement. You could get on, and then nothing.
      */
     this._readInput();
+    /* The panel is a menu: nothing moves while it is up, and the number keys
+       that buy upgrades must not also drive. */
+    const _garage = this.ctx.get('garage');
+    if (_garage && _garage.open) {
+      const i = this.input;
+      i.f = 0; i.r = 0; i.sprint = false; i.jump = false; i.crouch = false;
+      this.state.velocity.set(0, 0, 0);
+      this.speed01 = 0;
+    }
     /*
      * MOVEMENT IS DEAD WHILE THE KNIFE IS OUT — and pressing a movement key is
      * how you say you would rather not be doing this after all. Reading it off

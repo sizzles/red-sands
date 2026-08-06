@@ -409,6 +409,13 @@ export class Bike {
 
       const grade = this._grade();
 
+      /* --- what the garage has bought ------------------------------------ */
+      const G = this.ctx.get('garage');
+      const upTank = G ? G.mult('tank') : 1;
+      const upEcon = G ? G.mult('economy') : 1;
+      const upGear = G ? G.mult('gearing') : 1;
+      const upTyre = G ? G.mult('tyres') : 1;
+
       /* --- the road ------------------------------------------------------ */
       const roads = this.ctx.get('roads');
       const q = roads ? roads.query(s.position.x, s.position.z) : null;
@@ -425,8 +432,13 @@ export class Bike {
       const loose = ((surf.sand || 0) * 0.55 + (surf.dirt || 0) * 0.18
         + (surf.snow || 0) * 0.62) * (1 - onRoad);
       const wet = (this.ctx.env.wetness || 0) * (0.22 - onRoad * 0.11);
-      const grip = Math.min(1.15,
-        Math.max(0.35, 1 - loose - wet) * (1 + onRoad * ROAD_GRIP_GAIN));
+      /* Tyres raise the FLOOR as well as the value, which is the point: stock
+         rubber bottoms out at 0.35 on wet pumice and a knobbly set never gets
+         that bad. It is an upgrade whose worth is measured in fights avoided. */
+      const gripFloor = 0.35 * upTyre;
+      const grip = Math.min(1.2,
+        Math.max(gripFloor, (1 - loose / upTyre - wet) * upTyre)
+        * (1 + onRoad * ROAD_GRIP_GAIN));
       this.grip = grip;
 
       let a = 0;
@@ -449,7 +461,7 @@ export class Bike {
       this.speed += a * h;
       const roadK = 1 + onRoad * roadClass * ROAD_TOP_GAIN;
       const top = this.running
-        ? TOP_SPEED * roadK * (this.throttle > 0.7 ? 1 : CRUISE / TOP_SPEED)
+        ? TOP_SPEED * roadK * upGear * (this.throttle > 0.7 ? 1 : CRUISE / TOP_SPEED)
         : PADDLE;
       this.speed = THREE.MathUtils.clamp(this.speed, -PADDLE, Math.max(PADDLE, top));
       if (!this.running && this.speed > PADDLE) this.speed = Math.max(PADDLE, this.speed - 3.0 * h);
@@ -473,7 +485,15 @@ export class Bike {
 
       /* --- burn ---------------------------------------------------------- */
       if (this.running) {
-        const burn = (0.12 + this.throttle * 0.88) / FUEL_SECONDS;
+        /*
+         * Both fuel upgrades land here, and they are genuinely different
+         * things even though they multiply the same number: TANK makes the
+         * gauge represent more litres, ECONOMY makes each litre go further.
+         * The player feels them differently — a bigger tank changes how far
+         * you dare go from a station, better economy changes whether the trip
+         * was worth making — so they stay two tracks rather than one.
+         */
+        const burn = (0.12 + this.throttle * 0.88) / FUEL_SECONDS * upEcon / upTank;
         this.fuel = Math.max(0, this.fuel - burn * h);
       }
     } else {
