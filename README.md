@@ -164,6 +164,24 @@ everything within 62 m straight into a chase with your position already known �
 chains through overlapping packs. Waking one group next to two others is how six become
 twenty-five without twenty-five ever being simulated as a group.
 
+**The Cordon.** What is left of the people who enforced the quarantine — the
+EVACUATION and CHECKPOINT bills pasted on the town walls are theirs — still at the
+post, still charging for the road, with nobody left to answer to. They exist because
+the road network handed the player a straight upgrade with no price, and an upgrade
+with no price is a menu rather than a decision. They hold the **highways
+specifically**, so the fastest way anywhere is the way somebody is watching, and the
+two-track through the timber is slow, rough and safe.
+
+Every rule is inverted against the Riven so the two cannot be answered the same way:
+they sense by sight rather than sound, crouching does nothing at close range, the
+bike does not save you, and running does not either. The HUD says which is which,
+because the wrong response gets you killed.
+
+The best part is emergent. A firefight is the loudest event in the world — louder
+than your own rifle — and the Cordon will shoot at Riven that get close. Kiting a
+pack onto a checkpoint is a real way to take one, and nobody scripted it; it falls
+out of both systems being honest about noise.
+
 **Redwoods.** 48–78 m, and the point of them is scale — which is not a property
 of one object but a relationship. A 62 m redwood among 20 m ponderosa reads as
 enormous; the same tree alone reads as a normal tree seen from closer. So two
@@ -210,14 +228,14 @@ rather than being reimplemented and drifting.
 
 ## Architecture
 
-Twenty-three systems on a fixed lifecycle, sharing one frozen context object:
+Twenty-four systems on a fixed lifecycle, sharing one frozen context object:
 
 ```
 src/core/       Engine, Context (the shared contract), Config
 src/materials/  procedural PBR library + worker bake pool
 src/world/      Terrain · Roads · Vegetation · Scatter · Town
 src/render/     Sky · Clouds · Water · Lighting · Particles · PostFX
-src/sim/        TimeOfDay · Weather · Physics · Wildlife · Riven · Loot
+src/sim/        TimeOfDay · Weather · Physics · Wildlife · Riven · Cordon · Loot
 src/player/     Player · Bike · Weapon · CameraRig
 src/audio/      synthesised beds + foley
 src/ui/         HUD · TouchControls

@@ -44,7 +44,7 @@ export class MySystem {
 ```
 
 Registered ids: `procTextures timeOfDay weather terrain water roads vegetation
-scatter town lighting sky clouds particles physics player bike wildlife riven
+scatter town lighting sky clouds particles physics player bike wildlife riven cordon
 loot camera postfx audio hud touch`. Reach another system with
 `ctx.get('terrain')`.
 
@@ -74,7 +74,8 @@ Full field list lives in `src/core/Context.js` — read it. Summary of ownership
 `ctx.on(evt, fn)` / `ctx.emit(evt, payload)` for events. Known events:
 `ready`, `teleport`, `playerTeleported`, `weatherChange`, `lightning`,
 `hourChange`, `footstep`, `mount`, `dismount`, `mountBeat`, `gunshot`,
-`bikeStart`, `bikeStall`, `rivenHit`, `rivenKilled`, `looted`,
+`bikeStart`, `bikeStall`, `rivenHit`, `rivenKilled`, `cordonHit`, `cordonKilled`,
+`looted`,
 `refuelled`.
 
 `ctx.player.horse` still carries that name — it is a frozen field half a dozen
@@ -221,7 +222,31 @@ Anything that makes a noise should call `alarm()`. The single most important
 number in the game is `R.noise`: crouching is 0.25, walking 1.0, the bike with
 the throttle open is 14.
 
-### 4.9 `loot`
+### 4.9 `cordon` — the armed faction
+
+```js
+const C = ctx.get('cordon');
+C.raycast(origin, dir, maxDist);   // → hit | null   (same shape as Riven's)
+C.applyHit(hit, damage);           // → { killed, species } | null
+C.alarm(position, radius);         // put everything in range on alert
+C.engaged;                         // how many have eyes on you, for the HUD
+C.stats();
+```
+
+Types are `trooper` (rifle, 72 m, holds ground) and `enforcer` (close, tough,
+advances). Checkpoints are sited on HIGHWAY routes only — that is deliberate and
+load-bearing: the Cordon is the price of the fast road, and taxing a logging
+spur would break the one clean trade the map offers.
+
+They sense by SIGHT where the Riven sense by SOUND, and every other rule is
+inverted to match, so the two factions cannot be answered the same way. Anything
+that adds a new enemy should pick a side of that table rather than splitting it.
+
+`Cordon._fire` alarms the Riven at 260 m — further than the player's own rifle —
+which is what makes a firefight draw the horde. `Riven.nearestTo(pos, radius)`
+exists for the Cordon to find targets without reaching into its `_agents`.
+
+### 4.10 `loot`
 
 ```js
 const L = ctx.get('loot');
@@ -237,7 +262,7 @@ L.dropFrom(pos, kind);   // something died carrying something
 the weapon never learns an inventory exists and the inventory never has to
 understand a reload.
 
-### 4.10 `roads`
+### 4.11 `roads`
 
 ```js
 const R = ctx.get('roads');
@@ -265,7 +290,7 @@ on every ground query forever. The router earns the smoothness instead by
 punishing gradient quadratically. If you ever want real cuttings, index the
 override list spatially first.
 
-### 4.11 `audio`
+### 4.12 `audio`
 
 ```js
 const A = ctx.get('audio');

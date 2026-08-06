@@ -754,6 +754,26 @@ export class Riven {
     return { killed: false, species: a.type.name };
   }
 
+  /**
+   * Nearest live one to a point, within `radius`.
+   *
+   * Published because the Cordon needs it — they shoot at the Riven, and a
+   * faction reaching into another system's `_agents` array is exactly the kind
+   * of coupling that makes a later refactor break something three files away.
+   *
+   * @returns {{pos:THREE.Vector3, dist:number, agent:object}|null}
+   */
+  nearestTo(pos, radius = 40) {
+    let best = null, bd = radius * radius;
+    for (const a of this._agents) {
+      if (!a.alive || a.state === DEAD) continue;
+      const dx = a.pos.x - pos.x, dz = a.pos.z - pos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bd) { bd = d2; best = a; }
+    }
+    return best ? { pos: best.pos, dist: Math.sqrt(bd), agent: best } : null;
+  }
+
   /** For the HUD: how much trouble the player is currently in. */
   stats() {
     let alive = 0;

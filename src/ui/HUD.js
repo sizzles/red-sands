@@ -343,7 +343,10 @@ export class HUD {
     const RV = ctx.get('riven');
     this._hunting = RV ? (RV.hunting || 0) : 0;
     this._noise = RV ? (RV.noise || 0) : 0;
-    this._threatHold = this._hunting > 0 ? 2.6 : Math.max(0, (this._threatHold || 0) - dt);
+    const CD = ctx.get('cordon');
+    this._engaged = CD ? (CD.engaged || 0) : 0;
+    this._threatHold = (this._hunting > 0 || this._engaged > 0)
+      ? 2.6 : Math.max(0, (this._threatHold || 0) - dt);
 
     /* --- contextual prompt from nearby interactables -------------------- */
     this._promptT = Math.max(0, this._promptT - dt);
@@ -1297,18 +1300,30 @@ export class HUD {
    */
   _drawThreat(c, W, H, s, A) {
     const n = this._hunting || 0;
+    const g = this._engaged || 0;
     const x = W * 0.5;
     const y = 54 * s;
-    const label = n === 0 ? 'LOST YOU' : (n > 3 ? 'SWARM' : (n > 1 ? 'HUNTED' : 'SEEN'));
-    const pulse = n > 0 ? 0.72 + 0.28 * Math.abs(Math.sin(this._elapsed * (n > 3 ? 5.2 : 2.6))) : 0.5;
+    /*
+     * BEING SHOT AT OUTRANKS BEING CHASED, and the wording has to say WHICH,
+     * because the two want opposite things from the player. Riven: ride, or go
+     * quiet. Cordon: get behind something — you cannot outrun a rifle. A single
+     * generic "threat" indicator would be worse than none, since it would
+     * prompt the response that gets you killed half the time.
+     */
+    const label = g > 0
+      ? (g > 2 ? 'UNDER FIRE' : 'TAKING FIRE')
+      : (n === 0 ? 'LOST YOU' : (n > 3 ? 'SWARM' : (n > 1 ? 'HUNTED' : 'SEEN')));
+    const live = g > 0 ? g : n;
+    const pulse = live > 0
+      ? 0.72 + 0.28 * Math.abs(Math.sin(this._elapsed * (live > 2 ? 5.2 : 2.6))) : 0.5;
     this._text(c, label, x, y, {
-      size: 12 * s, colour: n > 0 ? HIT_RED : INK_DIM,
-      alpha: (n > 3 ? 0.92 : 0.78) * pulse * A, align: 'center', track: 0.30,
+      size: 12 * s, colour: live > 0 ? HIT_RED : INK_DIM,
+      alpha: (live > 2 ? 0.92 : 0.78) * pulse * A, align: 'center', track: 0.30,
     });
     /* Tally marks, not a number: three strokes read faster than a digit and
        stop at three, which is the point. */
-    if (n > 0) {
-      const marks = Math.min(3, n);
+    if (live > 0) {
+      const marks = Math.min(3, live);
       const wS = 5 * s;
       for (let i = 0; i < marks; i++) {
         const mx = x - (marks - 1) * wS + i * wS * 2;

@@ -761,6 +761,16 @@ export class Weapon {
     let riv = null;
     if (RV && RV.raycast) riv = RV.raycast(origin, dir, MAX);
 
+    /* The Cordon resolves on exactly the same footing — nearest hit along the
+       ray wins. A Riven that wanders between you and a checkpoint eats the
+       round, which is both correct and occasionally very useful.
+       Only the RAY is cast here; the comparison waits until `ground` exists
+       below, because reading it up here is a temporal-dead-zone ReferenceError
+       that no build step catches and that fires on the first shot. */
+    const CD = ctx.get('cordon');
+    let cor = null;
+    if (CD && CD.raycast) cor = CD.raycast(origin, dir, MAX);
+
     const law = this.player.wanted;
     let npc = null;
     if (law) {
@@ -773,7 +783,22 @@ export class Weapon {
       try { ground = T.raycast(origin, dir, MAX); } catch (e) { ground = null; }
     }
 
-    // nearest of the four wins
+    // nearest of the five wins
+    if (cor && riv && riv.distance < cor.distance) cor = null;
+    if (cor && animal && animal.distance < cor.distance) cor = null;
+    if (cor && ground && ground.distance < cor.distance) cor = null;
+    if (cor && npc && npc.distance < cor.distance) cor = null;
+    if (cor) {
+      const res = CD.applyHit(cor, 1);
+      this.lastShot = {
+        hit: true, cordon: true, species: cor.species, part: cor.part,
+        killed: !!(res && res.killed), distance: cor.distance,
+        point: cor.point.clone(),
+      };
+      this._impact(cor, res);
+      return;
+    }
+    if (riv && cor && cor.distance < riv.distance) riv = null;
     if (riv && animal && animal.distance < riv.distance) riv = null;
     if (riv && ground && ground.distance < riv.distance) riv = null;
     if (riv && npc && npc.distance < riv.distance) riv = null;
