@@ -300,12 +300,31 @@ export function buildYard(site, rand, M, getH) {
      the +Z wall and the gate closes it. The back wall is solid: the way you
      came in is not the way out. */
   const ro = { wear, h: wallTop, rand, col: CONC, gAt };
-  /* Walked anticlockwise seen from above, without exception — see wallRun. */
-  wallRun(B, F, M, -halfX, -halfZ, -halfX, halfZ, ro);
-  wallRun(B, F, M, -halfX, halfZ, -gateW * 0.5, halfZ, ro);
-  wallRun(B, F, M, gateW * 0.5, halfZ, halfX, halfZ, ro);
-  wallRun(B, F, M, halfX, halfZ, halfX, -halfZ, ro);
-  wallRun(B, F, M, halfX, -halfZ, -halfX, -halfZ, ro);
+  /*
+   * WALK DIRECTION IS LWALL HANDEDNESS, and getting it backwards is silent.
+   *
+   * `Frame` derives its +z as +x rotated 90 degrees, so the direction a run is
+   * walked in decides which face of that wall is "outside" as far as wallRun is
+   * concerned. The first version walked the other way, which built every wall
+   * INSIDE OUT: buttresses, proud panels, string course, embrasures and the
+   * gabion revetment all ended up facing the parade ground, and the fighting
+   * step and its corbels ended up on the approach.
+   *
+   * It is silent because the result is not broken, just wrong — from outside you
+   * see a plain wall with a row of square lumps on it, which for four renders
+   * read as "the buttresses are too subtle" rather than "the buttresses are on
+   * the other side". Caught by measuring vertex distance from the wall
+   * centreline rather than by looking at it: the fighting step sat 1.66 m proud
+   * of the OUTER face and the buttresses 0.86 m proud of the inner one.
+   *
+   * So: every run is walked so that its -z is outward. Do not reorder these
+   * without re-running that measurement.
+   */
+  wallRun(B, F, M, -halfX, halfZ, -halfX, -halfZ, ro);
+  wallRun(B, F, M, -gateW * 0.5, halfZ, -halfX, halfZ, ro);
+  wallRun(B, F, M, halfX, halfZ, gateW * 0.5, halfZ, ro);
+  wallRun(B, F, M, halfX, -halfZ, halfX, halfZ, ro);
+  wallRun(B, F, M, -halfX, -halfZ, halfX, -halfZ, ro);
 
   /* gate piers, heavier than the curtain either side of the opening */
   for (const s of [-1, 1]) {
