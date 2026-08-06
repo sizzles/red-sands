@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * BROKEN ROAD — INFECTED BODIES
+ * BROKEN ROAD — THE RIVEN, AS GEOMETRY
  * ============================================================================
  * Bipeds built the same way the wildlife is: a handful of tapered boxes merged
  * into one geometry, with every vertex carrying which limb it belongs to
@@ -15,13 +15,13 @@ import * as THREE from 'three';
  * the three types have to be distinguishable by shape alone.
  *
  * THE THREE SHAPES
- *   runner   1.62 m. Human height, but pitched forward from the hips with the
+ *   stray    1.62 m. Human height, but pitched forward from the hips with the
  *            arms hanging low, so the head leads the body. It is the wrong
  *            posture for a person and right for something that runs on the
  *            edge of falling over, and it is what reads at distance.
- *   crawler  0.85 m, on all fours, long arms. Reads as an animal until it is
+ *   skitter  0.85 m, on all fours, long arms. Reads as an animal until it is
  *            far too close, which is the entire point of it.
- *   brute    2.15 m and twice the mass through the shoulders, with a low head
+ *   harrow   2.15 m and twice the mass through the shoulders, with a low head
  *            carried between them. Slow, and worth running from.
  * ============================================================================
  */
@@ -84,15 +84,15 @@ class Builder {
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
 /**
- * @param {string} kind runner | crawler | brute
+ * @param {string} kind stray | skitter | harrow
  * @param {function} r deterministic RNG — the asymmetry it produces is per
  *        TYPE, not per instance, so it costs nothing and still stops the three
  *        shapes reading as anatomy charts.
  */
-export function buildFreaker(kind, r) {
+export function buildRiven(kind, r) {
   const b = new Builder();
 
-  if (kind === 'crawler') {
+  if (kind === 'skitter') {
     /* On all fours. The spine is nearly horizontal and the shoulders are the
        highest point, which is exactly the profile of a big dog — and the
        player's first read on this thing being an animal is a mistake the shape
@@ -111,48 +111,48 @@ export function buildFreaker(kind, r) {
     return b.finish();
   }
 
-  const brute = kind === 'brute';
-  /* Proportions. The brute is not just a scaled runner — it is far wider
+  const harrow = kind === 'harrow';
+  /* Proportions. A harrow is not just a scaled stray — it is far wider
      through the chest and shorter in the neck, which is what makes it read as
      heavy rather than as a big man. */
-  const H = brute ? 2.15 : 1.62;
+  const H = harrow ? 2.15 : 1.62;
   const hipY = H * 0.50;
   const shoY = H * 0.83;
-  const chestW = brute ? 0.30 : 0.185;
-  const chestD = brute ? 0.20 : 0.135;
+  const chestW = harrow ? 0.30 : 0.185;
+  const chestD = harrow ? 0.20 : 0.135;
 
   /* Torso, pitched forward. `lean` moves the shoulders ahead of the hips in X,
      and it is the whole silhouette: a person stands with them stacked. */
-  const lean = brute ? 0.24 : 0.17;
+  const lean = harrow ? 0.24 : 0.17;
   b.box(V(0, hipY, 0), V(lean, shoY, 0),
-    brute ? 0.19 : 0.135, brute ? 0.15 : 0.115, chestW, chestD,
+    harrow ? 0.19 : 0.135, harrow ? 0.15 : 0.115, chestW, chestD,
     PART.TORSO, V(0, hipY, 0));
 
   /* Head, dropped forward and down off the shoulders. */
-  const neck = brute ? 0.06 : 0.11;
-  b.box(V(lean + 0.02, shoY + neck, 0), V(lean + (brute ? 0.20 : 0.17), shoY + neck * (brute ? 0.4 : 0.7), 0),
-    brute ? 0.115 : 0.090, brute ? 0.110 : 0.088,
-    brute ? 0.085 : 0.062, brute ? 0.090 : 0.070,
+  const neck = harrow ? 0.06 : 0.11;
+  b.box(V(lean + 0.02, shoY + neck, 0), V(lean + (harrow ? 0.20 : 0.17), shoY + neck * (harrow ? 0.4 : 0.7), 0),
+    harrow ? 0.115 : 0.090, harrow ? 0.110 : 0.088,
+    harrow ? 0.085 : 0.062, harrow ? 0.090 : 0.070,
     PART.HEAD, V(lean, shoY, 0));
 
-  /* Arms, long and hanging. The runner's fingertips reach below its knees,
+  /* Arms, long and hanging. The stray's fingertips reach below its knees,
      which no healthy human's do, and it is one of the cheapest tells there is. */
-  const armLen = brute ? H * 0.52 : H * 0.47;
+  const armLen = harrow ? H * 0.52 : H * 0.47;
   for (const [s, part] of [[1, PART.ARM_L], [-1, PART.ARM_R]]) {
     const px = lean - 0.01, pz = s * (chestW + 0.035);
     const swing = 0.10 + r() * 0.06;
     b.box(V(px, shoY - 0.04, pz), V(px - swing, shoY - 0.04 - armLen, pz * 1.12),
-      brute ? 0.072 : 0.050, brute ? 0.072 : 0.050,
-      brute ? 0.052 : 0.034, brute ? 0.052 : 0.034,
+      harrow ? 0.072 : 0.050, harrow ? 0.072 : 0.050,
+      harrow ? 0.052 : 0.034, harrow ? 0.052 : 0.034,
       part, V(px, shoY - 0.04, pz));
   }
 
   /* Legs. */
   for (const [s, part] of [[1, PART.LEG_L], [-1, PART.LEG_R]]) {
-    const pz = s * (brute ? 0.115 : 0.082);
+    const pz = s * (harrow ? 0.115 : 0.082);
     b.box(V(0, hipY - 0.02, pz), V(0.02, 0.0, pz * 1.05),
-      brute ? 0.090 : 0.062, brute ? 0.090 : 0.062,
-      brute ? 0.058 : 0.042, brute ? 0.058 : 0.042,
+      harrow ? 0.090 : 0.062, harrow ? 0.090 : 0.062,
+      harrow ? 0.058 : 0.042, harrow ? 0.058 : 0.042,
       part, V(0, hipY - 0.02, pz));
   }
   return b.finish();
@@ -160,17 +160,17 @@ export function buildFreaker(kind, r) {
 
 /* ------------------------------------------------------------------ shader */
 
-export const FREAK_PARS = /* glsl */`
+export const RIVEN_PARS = /* glsl */`
 attribute float aPart;
 attribute vec3  aPivot;
 attribute vec4  aAnim;
 
-vec3 fkRotZ(vec3 p, vec3 pivot, float a) {
+vec3 rvRotZ(vec3 p, vec3 pivot, float a) {
   vec3 d = p - pivot;
   float c = cos(a), s = sin(a);
   return pivot + vec3(d.x * c - d.y * s, d.x * s + d.y * c, d.z);
 }
-vec3 fkRotX(vec3 p, vec3 pivot, float a) {
+vec3 rvRotX(vec3 p, vec3 pivot, float a) {
   vec3 d = p - pivot;
   float c = cos(a), s = sin(a);
   return pivot + vec3(d.x, d.y * c - d.z * s, d.y * s + d.z * c);
@@ -188,7 +188,7 @@ vec3 fkRotX(vec3 p, vec3 pivot, float a) {
  *            difference between shambling and charging.
  *   aAnim.w  death 0..1 — collapses the whole body toward the ground
  */
-export const FREAK_BEGIN = /* glsl */`
+export const RIVEN_BEGIN = /* glsl */`
 vec3 transformed = vec3(position);
 {
   float ph   = aAnim.x;
@@ -217,19 +217,19 @@ vec3 transformed = vec3(position);
     float off = (part < 3.0) ? 3.14159265 : 0.0;
     float s = sin(ph + off);
     float swing = s * (0.22 + gait * 0.85) * (1.0 + rage * 0.55);
-    transformed = fkRotZ(transformed, aPivot, swing);
+    transformed = rvRotZ(transformed, aPivot, swing);
     /* Reaching: the arms come UP and OUT as it closes, which is the last
        thing the player sees before it is on them. */
-    transformed = fkRotX(transformed, aPivot, (part < 3.0 ? 1.0 : -1.0) * rage * 0.55);
+    transformed = rvRotX(transformed, aPivot, (part < 3.0 ? 1.0 : -1.0) * rage * 0.55);
     transformed.x += rage * 0.16 * max(0.0, aPivot.y - transformed.y);
   } else if (part > 0.0) {
     /* ---- head: lolls with the stride, and snaps level when it hunts -- */
     float bob = sin(ph * 2.0) * 0.10 * gait;
-    transformed = fkRotZ(transformed, aPivot, bob * (1.0 - rage) - rage * 0.30);
-    transformed = fkRotX(transformed, aPivot, sin(ph) * 0.14 * gait * (1.0 - rage));
+    transformed = rvRotZ(transformed, aPivot, bob * (1.0 - rage) - rage * 0.30);
+    transformed = rvRotX(transformed, aPivot, sin(ph) * 0.14 * gait * (1.0 - rage));
   } else {
     /* ---- torso: pitch forward with aggression, and bounce with the run */
-    transformed = fkRotZ(transformed, aPivot, rage * 0.26);
+    transformed = rvRotZ(transformed, aPivot, rage * 0.26);
     transformed.y += sin(ph * 2.0) * 0.035 * gait;
   }
 
@@ -237,7 +237,7 @@ vec3 transformed = vec3(position);
      has to stop being a silhouette; anything more elaborate is invisible
      at the ranges these are actually shot at. */
   if (dead > 0.001) {
-    transformed = fkRotZ(transformed, vec3(0.0), dead * 1.48);
+    transformed = rvRotZ(transformed, vec3(0.0), dead * 1.48);
     transformed.y -= dead * 0.12;
   }
 }
@@ -249,11 +249,11 @@ vec3 transformed = vec3(position);
  * chunk wholesale, so the rest of the standard pipeline (shadows, fog, aerial
  * perspective injection) is untouched.
  */
-export function patchFreakerAnim(mat) {
+export function patchRivenAnim(mat) {
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\n' + FREAK_PARS)
-      .replace('#include <begin_vertex>', FREAK_BEGIN);
+      .replace('#include <common>', '#include <common>\n' + RIVEN_PARS)
+      .replace('#include <begin_vertex>', RIVEN_BEGIN);
   };
-  mat.customProgramCacheKey = () => 'freakerAnim';
+  mat.customProgramCacheKey = () => 'rivenAnim';
 }

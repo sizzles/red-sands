@@ -340,9 +340,9 @@ export class HUD {
     const coresWanted = (this.health < 0.995 || this.stamina < 0.995 || this._coresHold > 0) ? 1 : 0;
 
     /* --- the horde ------------------------------------------------------ */
-    const FK = ctx.get('freakers');
-    this._hunting = FK ? (FK.hunting || 0) : 0;
-    this._noise = FK ? (FK.noise || 0) : 0;
+    const RV = ctx.get('riven');
+    this._hunting = RV ? (RV.hunting || 0) : 0;
+    this._noise = RV ? (RV.noise || 0) : 0;
     this._threatHold = this._hunting > 0 ? 2.6 : Math.max(0, (this._threatHold || 0) - dt);
 
     /* --- contextual prompt from nearby interactables -------------------- */

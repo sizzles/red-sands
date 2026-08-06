@@ -757,9 +757,9 @@ export class Weapon {
      * everything else. That matters: a runner between you and a deer should
      * eat the round, and so should a deer between you and a runner.
      */
-    const FK = ctx.get('freakers');
-    let freak = null;
-    if (FK && FK.raycast) freak = FK.raycast(origin, dir, MAX);
+    const RV = ctx.get('riven');
+    let riv = null;
+    if (RV && RV.raycast) riv = RV.raycast(origin, dir, MAX);
 
     const law = this.player.wanted;
     let npc = null;
@@ -774,17 +774,17 @@ export class Weapon {
     }
 
     // nearest of the four wins
-    if (freak && animal && animal.distance < freak.distance) freak = null;
-    if (freak && ground && ground.distance < freak.distance) freak = null;
-    if (freak && npc && npc.distance < freak.distance) freak = null;
-    if (freak) {
-      const res = FK.applyHit(freak, 1);
+    if (riv && animal && animal.distance < riv.distance) riv = null;
+    if (riv && ground && ground.distance < riv.distance) riv = null;
+    if (riv && npc && npc.distance < riv.distance) riv = null;
+    if (riv) {
+      const res = RV.applyHit(riv, 1);
       this.lastShot = {
-        hit: true, freaker: true, species: freak.species, part: freak.part,
-        killed: !!(res && res.killed), distance: freak.distance,
-        point: freak.point.clone(),
+        hit: true, riven: true, species: riv.species, part: riv.part,
+        killed: !!(res && res.killed), distance: riv.distance,
+        point: riv.point.clone(),
       };
-      this._impact(freak, res);
+      this._impact(riv, res);
       return;
     }
     if (npc && animal && animal.distance < npc.distance) npc = null;

@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
-import { buildFreaker, patchFreakerAnim } from './freakers/FreakerBody.js';
+import { buildRiven, patchRivenAnim } from './riven/RivenBody.js';
 
 /**
- * BROKEN ROAD — THE INFECTED
+ * BROKEN ROAD — THE RIVEN
  * ============================================================================
  * Not zombies exactly: fast, feral, and organised only in the sense that a
  * wolf pack is organised. They live in nests, they hunt at night, and the
  * loudest thing in the world is the bike you are riding.
+ *
+ * THE NAME is what survivors call them, not what they are — nobody left has the
+ * means to find out what they are. `riven`, torn apart, which is the same word
+ * the map uses for the gap north of the crest, because the people who named
+ * one named the other.
  *
  * DESIGN — WHY PACKS AND NOT A HORDE
  * The famous version of this is three hundred of them at once. That is a
@@ -37,7 +42,7 @@ import { buildFreaker, patchFreakerAnim } from './freakers/FreakerBody.js';
  *
  * BUDGET
  * One InstancedMesh per type, three types, everything animated in the vertex
- * shader (see FreakerBody), so the whole population is three draw calls plus
+ * shader (see RivenBody), so the whole population is three draw calls plus
  * three shadow draws. Only a slice of the population runs perception on any
  * given frame — the same round-robin trick Wildlife uses — so the AI cost is
  * flat in the population rather than linear.
@@ -49,7 +54,8 @@ import { buildFreaker, patchFreakerAnim } from './freakers/FreakerBody.js';
 const IDLE = 0, ALERT = 1, CHASE = 2, ATTACK = 3, DEAD = 4;
 
 const TYPES = {
-  runner: {
+  /* The common one. A person, still shaped like a person, running. */
+  stray: {
     /** Share of the population. */
     share: 0.72,
     speed: 5.9, speedIdle: 0.85, hp: 2, damage: 0.055, reach: 1.65,
@@ -58,7 +64,7 @@ const TYPES = {
     colour: [0.128, 0.118, 0.104],
     shadow: true,
   },
-  crawler: {
+  skitter: {
     /* Faster than you, and short enough to be lost in undergrowth until it is
        inside your reach. It is the one that gets people killed. */
     share: 0.20,
@@ -68,7 +74,7 @@ const TYPES = {
     colour: [0.104, 0.100, 0.092],
     shadow: true,
   },
-  brute: {
+  harrow: {
     /* Slow enough to outrun on foot and far too tough to trade with. It exists
        to make a fight a decision rather than a reflex. */
     share: 0.08,
@@ -97,8 +103,8 @@ const _s = new THREE.Vector3(1, 1, 1);
 const _HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
 const _UP = new THREE.Vector3(0, 1, 0);
 
-export class Freakers {
-  static id = 'freakers';
+export class Riven {
+  static id = 'riven';
 
   constructor(ctx) {
     this.ctx = ctx;
@@ -128,7 +134,7 @@ export class Freakers {
     for (const name of Object.keys(TYPES)) {
       const def = TYPES[name];
       const count = Math.max(2, Math.round(total * def.share));
-      const geo = buildFreaker(name, this.rand);
+      const geo = buildRiven(name, this.rand);
 
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(def.colour[0], def.colour[1], def.colour[2]),
@@ -137,13 +143,13 @@ export class Freakers {
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.BasicDepthPacking });
       depth.userData.rsNoAerial = true;
       depth.userData.rsNoGroundFX = true;
-      patchFreakerAnim(mat);
-      patchFreakerAnim(depth);
+      patchRivenAnim(mat);
+      patchRivenAnim(depth);
 
       const mesh = new THREE.InstancedMesh(geo, mat, count);
       mesh.customDepthMaterial = depth;
       mesh.frustumCulled = false;
-      mesh.name = 'freakers:' + name;
+      mesh.name = 'riven:' + name;
       mesh.castShadow = !!def.shadow;
       mesh.receiveShadow = true;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -612,7 +618,7 @@ export class Freakers {
 
     /* ---- animation drive ------------------------------------------------ */
     /* Phase advances by DISTANCE, not time, so the feet never skate. */
-    const stride = a.type.name === 'crawler' ? 0.85 : 1.35;
+    const stride = a.type.name === 'skitter' ? 0.85 : 1.35;
     a.phase += (a.speed * h) / stride * 6.2831;
     a.gait += (THREE.MathUtils.clamp(a.speed / (def.speed * 0.8), 0, 1) - a.gait)
       * Math.min(1, h * 6);
@@ -654,7 +660,7 @@ export class Freakers {
     if (PX && PX.shake) PX.shake(0.35 + dmg * 2.2, 0.22);
     const A = ctx.get('audio');
     if (A && A.play) A.play('bodyfall', { position: a.pos, volume: 0.5, pitch: 1.3 });
-    ctx.emit('freakerHit', { damage: dmg, position: a.pos.clone(), type: a.type.name });
+    ctx.emit('rivenHit', { damage: dmg, position: a.pos.clone(), type: a.type.name });
   }
 
   /* ---------------------------------------------------------------- render */
@@ -690,8 +696,8 @@ export class Freakers {
     let best = null;
     for (const a of this._agents) {
       if (!a.alive || a.state === DEAD) continue;
-      const h = a.type.name === 'crawler' ? 0.62 : (a.type.name === 'brute' ? 2.0 : 1.55);
-      const r = a.type.name === 'brute' ? 0.55 : 0.34;
+      const h = a.type.name === 'skitter' ? 0.62 : (a.type.name === 'harrow' ? 2.0 : 1.55);
+      const r = a.type.name === 'harrow' ? 0.55 : 0.34;
       /* Closest approach of the ray to the body's vertical segment. */
       _v.set(a.pos.x, a.pos.y + h * 0.5 * a.scale, a.pos.z).sub(origin);
       const t = _v.dot(dir);
@@ -713,7 +719,7 @@ export class Freakers {
   }
 
   /**
-   * Apply a hit. A head shot kills anything that is not a brute outright,
+   * Apply a hit. A head shot kills anything that is not a harrow outright,
    * which is what makes aiming worth the time it costs.
    */
   applyHit(hit, damage = 1) {
@@ -735,7 +741,7 @@ export class Freakers {
       if (A && A.play) A.play('bodyfall', { position: a.pos, volume: 0.6, pitch: 0.95 });
       const loot = this.ctx.get('loot');
       if (loot && loot.dropFrom) loot.dropFrom(a.pos, a.type.name);
-      this.ctx.emit('freakerKilled', { position: a.pos.clone(), type: a.type.name });
+      this.ctx.emit('rivenKilled', { position: a.pos.clone(), type: a.type.name });
       return { killed: true, species: a.type.name };
     }
     /* Anything that is shot at and survives knows exactly where the shot came

@@ -44,7 +44,7 @@ export class MySystem {
 ```
 
 Registered ids: `procTextures timeOfDay weather terrain water roads vegetation
-scatter town lighting sky clouds particles physics player bike wildlife freakers
+scatter town lighting sky clouds particles physics player bike wildlife riven
 loot camera postfx audio hud touch`. Reach another system with
 `ctx.get('terrain')`.
 
@@ -74,7 +74,7 @@ Full field list lives in `src/core/Context.js` — read it. Summary of ownership
 `ctx.on(evt, fn)` / `ctx.emit(evt, payload)` for events. Known events:
 `ready`, `teleport`, `playerTeleported`, `weatherChange`, `lightning`,
 `hourChange`, `footstep`, `mount`, `dismount`, `mountBeat`, `gunshot`,
-`bikeStart`, `bikeStall`, `freakerHit`, `freakerKilled`, `looted`,
+`bikeStart`, `bikeStall`, `rivenHit`, `rivenKilled`, `looted`,
 `refuelled`.
 
 `ctx.player.horse` still carries that name — it is a frozen field half a dozen
@@ -202,20 +202,23 @@ B.refuel(amount);   // spends one `fuel` from Loot; false if there is none
 whole gait-rocking chain on it. `vehicle: true` switches the rider from an
 equestrian seat to a forward crouch with the hands IK'd onto `gripL/R`.
 
-### 4.8 `freakers`
+### 4.8 `riven` — the infected
+
+Types are `stray` (the common runner), `skitter` (low, quadrupedal, fast) and
+`harrow` (large, slow, tough). `hit.part` is `'head'` or `'body'`.
 
 ```js
-const F = ctx.get('freakers');
-F.raycast(origin, dir, maxDist);   // → hit | null   (same shape as Wildlife's)
-F.applyHit(hit, damage);           // → { killed, species } | null
-F.alarm(position, radius, intensity);  // wake everything in earshot
-F.hunting;                         // how many are actively chasing, for the HUD
-F.noise;                           // how loud the player is being, 0 .. ~14
-F.stats();
+const R = ctx.get('riven');
+R.raycast(origin, dir, maxDist);   // → hit | null   (same shape as Wildlife's)
+R.applyHit(hit, damage);           // → { killed, species } | null
+R.alarm(position, radius, intensity);  // wake everything in earshot
+R.hunting;                         // how many are actively chasing, for the HUD
+R.noise;                           // how loud the player is being, 0 .. ~14
+R.stats();
 ```
 
 Anything that makes a noise should call `alarm()`. The single most important
-number in the game is `F.noise`: crouching is 0.25, walking 1.0, the bike with
+number in the game is `R.noise`: crouching is 0.25, walking 1.0, the bike with
 the throttle open is 14.
 
 ### 4.9 `loot`

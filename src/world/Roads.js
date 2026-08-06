@@ -242,7 +242,7 @@ export class Roads {
      * the loudest thing you can do standing still, and stations are on the
      * highway where the infected already are.
      */
-    const F = this.ctx.get('freakers');
+    const F = this.ctx.get('riven');
     if (F && F.alarm) F.alarm(st.pos, 78, 0.75);
     this.ctx.emit('refuelled', { position: st.pos.clone(), left: st.tanks });
     return true;

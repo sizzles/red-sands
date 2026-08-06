@@ -19,7 +19,7 @@ import { Physics } from './sim/Physics.js';
 import { Player } from './player/Player.js';
 import { Bike } from './player/Bike.js';
 import { Wildlife } from './sim/Wildlife.js';
-import { Freakers } from './sim/Freakers.js';
+import { Riven } from './sim/Riven.js';
 import { Loot } from './sim/Loot.js';
 import { CameraRig } from './player/CameraRig.js';
 import { PostFX } from './render/PostFX.js';
@@ -48,7 +48,7 @@ const S = [
   [new Player(ctx),      75],
   [new Bike(ctx),        80],
   [new Wildlife(ctx),    85],
-  [new Freakers(ctx),    86],
+  [new Riven(ctx),       86],
   [new Loot(ctx),        87],
   [new CameraRig(ctx),   90],
   [new ProcTextures(ctx), 1],
@@ -82,7 +82,7 @@ const LABELS = {
   clouds: 'gathering cloud', particles: 'seeding dust',
   physics: 'setting the rules', player: 'waking the drifter',
   bike: 'kicking it over', wildlife: 'releasing the herds',
-  freakers: 'listening for the horde', loot: 'hiding the caches',
+  riven: 'listening for the horde', loot: 'hiding the caches',
   camera: 'framing the shot', postfx: 'grading the film',
   audio: 'tuning the wind', hud: 'final touches', touch: 'final touches', ready: 'ready',
 };

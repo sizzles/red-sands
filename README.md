@@ -18,7 +18,7 @@ No downloads. No plugins. No art files — every texture, mesh and sound is gene
 
 ## What this is
 
-A procedurally generated open world — volcanic terrain, conifer forest, weather, infected,
+A procedurally generated open world — volcanic terrain, conifer forest, weather, the Riven,
 audio — rendered in WebGL2. There is not a single `.png`, `.gltf` or `.wav` in the
 repository. The mountains are real stratovolcano profiles with hydraulically eroded
 flanks, the sky is a physical scattering integral, the engine note is four oscillators
@@ -99,7 +99,7 @@ Three numbers, and they pull against each other:
 
 - **Fuel.** A full tank is about four minutes of hard riding. Jerry cans are scattered
   across the map at fixed positions, and there are never quite enough.
-- **Noise.** The infected hunt by sound. Crouching puts you at `0.25`; walking is `1.0`;
+- **Noise.** The Riven hunt by sound. Crouching puts you at `0.25`; walking is `1.0`;
   the bike, with the throttle open, is `14` — fifty-six times louder. The thing that
   lets you cover ground is the thing that tells everything in the valley where you are,
   and shutting the engine off to push the last kilometre is a real decision because the
@@ -151,8 +151,15 @@ is driven by throttle rather than by rpm, so the motor audibly strains under loa
 goes quiet on a trailing throttle at the same revs. There is a gearbox purely so the
 note *falls* when it changes up.
 
-**The infected.** Packs of three to twelve, spawned around fixed nests. The horde is
-compressed into one mechanic: a freaker that sees you screams, and the scream puts
+**The Riven.** Survivors' word for them — *riven*, torn apart — and the same word the
+map uses for the gap north of the crest, because the people who named one named the
+other. Three shapes, distinguishable by silhouette alone at eighty metres because that
+is the only warning you get: the **stray** (human height, pitched forward so the head
+leads the body), the **skitter** (0.85 m on all fours, reads as an animal until it is
+far too close), and the **harrow** (2.15 m, slow, worth running from).
+
+They move in packs of three to twelve around fixed nests, and the horde is compressed
+into one mechanic: one that sees you screams, and the scream puts
 everything within 62 m straight into a chase with your position already known — which
 chains through overlapping packs. Waking one group next to two others is how six become
 twenty-five without twenty-five ever being simulated as a group.
@@ -210,7 +217,7 @@ src/core/       Engine, Context (the shared contract), Config
 src/materials/  procedural PBR library + worker bake pool
 src/world/      Terrain · Roads · Vegetation · Scatter · Town
 src/render/     Sky · Clouds · Water · Lighting · Particles · PostFX
-src/sim/        TimeOfDay · Weather · Physics · Wildlife · Freakers · Loot
+src/sim/        TimeOfDay · Weather · Physics · Wildlife · Riven · Loot
 src/player/     Player · Bike · Weapon · CameraRig
 src/audio/      synthesised beds + foley
 src/ui/         HUD · TouchControls

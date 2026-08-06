@@ -374,7 +374,7 @@ export class Loot {
      * which matters because the stashes and the nests are in the same kind of
      * place — see the header.
      */
-    const F = this.ctx.get('freakers');
+    const F = this.ctx.get('riven');
     if (F && F.alarm) F.alarm(st.pos, 34, 0.5);
     this.ctx.emit('looted', { kind: st.kind.name, gained, position: st.pos.clone() });
     return gained;
@@ -426,11 +426,11 @@ export class Loot {
    */
   dropFrom(pos, type) {
     const R = this.rand;
-    if (R() > (type === 'brute' ? 0.62 : 0.28)) return null;
+    if (R() > (type === 'harrow' ? 0.62 : 0.28)) return null;
     const gained = {};
     if (R() < 0.45) gained.ammo = 1 + Math.floor(R() * 3);
     if (R() < 0.30) gained.scrap = 1 + Math.floor(R() * 2);
-    if (type === 'brute' && R() < 0.4) gained.meds = 1;
+    if (type === 'harrow' && R() < 0.4) gained.meds = 1;
     let any = 0;
     for (const k in gained) any += gained[k];
     if (!any) return null;
