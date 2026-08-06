@@ -541,6 +541,34 @@ export function hescoRun(B, F, M, x0, x1, z, y, o = {}) {
       us: IUV.gravel.us, vs: IUV.gravel.vs, wear, nu: 1, nv: 1,
       col: [0.60 * t, 0.55 * t, 0.46 * t],
     });
+    /*
+     * A SECOND COURSE on roughly half the cells, set back and narrower.
+     *
+     * One even row of identical cubes stepping down a slope reads as a line of
+     * packing crates, which is what the first build photographed as. Real
+     * revetment is stacked to whatever height the ground and the working party
+     * decided on that day, so it is ragged along the top and pyramidal in
+     * section — and it is the ragged top edge, not the cage, that says this was
+     * built by hand out of what was to hand.
+     */
+    if (rand() > 0.42) {
+      const h2 = hh * (0.72 + rand() * 0.26);
+      const in2 = d * 0.16;
+      B.box(M.gravel, F, a + 0.10, b - 0.10, z - d * 0.5 + in2, z + d * 0.5 - in2,
+        y0 + hh + 0.05, y0 + hh + 0.05 + h2, {
+          us: IUV.gravel.us, vs: IUV.gravel.vs, wear, nu: 2, nv: 1,
+          col: [0.54 * t, 0.50 * t, 0.43 * t],
+        });
+      const wc2 = { us: 0.3, vs: 0.3, wear, col: [0.40, 0.38, 0.34] };
+      for (const zz of [z - d * 0.5 + in2 - 0.01, z + d * 0.5 - in2 + 0.01]) {
+        for (const xx of [a + 0.10, b - 0.10]) {
+          B.tube(M.rust, F.p(xx, zz, y0 + hh + 0.05), F.p(xx, zz, y0 + hh + 0.05 + h2),
+            0.020, 0.020, 4, wc2);
+        }
+        B.tube(M.rust, F.p(a + 0.10, zz, y0 + hh + 0.05 + h2 * 0.55),
+          F.p(b - 0.10, zz, y0 + hh + 0.05 + h2 * 0.55), 0.017, 0.017, 4, wc2);
+      }
+    }
   }
 }
 

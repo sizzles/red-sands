@@ -115,7 +115,11 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
    * the sightline problems that come with an actual opening.
    */
   const emb = [];
-  const ew = 0.62, eh = 0.52, ey = H - 2.10;
+  /* Sill height is not arbitrary: the fighting step inside is at H-1.55, so a
+     man standing on it has his chest at about H-0.2 and fires through a loop
+     whose head is around H-1.6. That is the whole reason both elements exist,
+     and it only reads if they agree with each other. */
+  const ew = 0.62, eh = 0.52, ey = H - 2.15;
   for (let i = 0; i < n; i++) {
     const cx = (i + 0.5) * bw;
     if (cx < 0.9 || cx > run - 0.9) continue;
@@ -177,7 +181,10 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
     const x0p = i * bw + bwid * 0.5 + 0.22;
     const x1p = (i + 1) * bw - bwid * 0.5 - 0.22;
     if (x1p - x0p < 0.5) continue;
-    B.box(M.concrete, W, x0p, x1p, -t * 0.5 - 0.17, -t * 0.5 + 0.01, 0.86, H - 1.55, pnl);
+    /* The panel stops CLEAR of the embrasure band. At H-1.55 it was laid
+       straight over the slots punched in the wall face behind it, so the
+       embrasures were built, on the right side, and completely invisible. */
+    B.box(M.concrete, W, x0p, x1p, -t * 0.5 - 0.17, -t * 0.5 + 0.01, 0.86, H - 2.55, pnl);
   }
   /* string course, running the whole length under the coping */
   B.box(M.concrete, W, -0.04, run + 0.04, -t * 0.5 - 0.24, t * 0.5 + 0.05, H - 1.42, H - 1.10,
