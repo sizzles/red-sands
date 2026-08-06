@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 
 /**
- * Wear — the per-pixel surface pass shared by every surface in the town.
+ * Wear — the per-pixel surface pass shared by every built surface in the world.
+ *
+ * Written for the town, and now also carrying the Cordon's compound: nothing in
+ * here knows what a settlement is. It reads `aWear` off whatever Builder fed it
+ * and turns geometry into weathering, so any structure that goes through the
+ * kit gets rust runs, dirt splash and sun bleaching for free.
  *
  * PASS-2 FORENSICS (town_street, "critical"): "The sheriff facade is blatantly,
  * measurably tiled. Autocorrelation peaks at lag 65 px with correlation 0.49 …
@@ -316,7 +321,7 @@ export function injectWear(material, opts = {}) {
  * Every material is vertex-coloured, weathered and (by the caller) fed to
  * Sky.injectAerialPerspective.
  */
-export function makeTownMaterials(proc, aniso = 8) {
+export function makeKitMaterials(proc, aniso = 8) {
   const cache = new Map();
 
   const set = (name) => {
@@ -348,7 +353,7 @@ export function makeTownMaterials(proc, aniso = 8) {
     }
     delete params.nrm;
     const m = new THREE.MeshStandardMaterial(params);
-    m.name = 'town_' + key;
+    m.name = 'kit_' + key;
     if (s && s.map) {
       for (const t of [s.map, s.normalMap, s.roughnessMap, s.aoMap]) {
         if (t && t.anisotropy < aniso) { t.anisotropy = aniso; t.needsUpdate = true; }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
-import { buildCompound, YARD } from './compound/CompoundBuild.js';
+import { buildYard, YARD } from './compound/Yard.js';
+import { injectWear, makeKitMaterials } from '../world/build/Wear.js';
 
 /**
  * BROKEN ROAD — THE COMPOUND, AND THE END OF THE GAME
@@ -43,7 +44,6 @@ const ESCAPE = 46;
 const YARD_R = 40;
 
 const _v = new THREE.Vector3();
-const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3(1, 1, 1);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -126,7 +126,7 @@ export class Compound {
      *
      * So: score every candidate, take the best, instead of taking the first
      * acceptable one. The flatness limit stays as a hard reject, but loose
-     * enough that real terrain qualifies — the 5 m footings in CompoundBuild
+     * enough that real terrain qualifies — the buried footings in Yard.js
      * absorb what is left of the cross-fall.
      */
     const pts = best.route;
@@ -206,45 +206,98 @@ export class Compound {
   _build() {
     const ctx = this.ctx;
     const proc = ctx.get('procTextures');
-    const mk = (n, o) => (proc && proc.material ? proc.material(n, o)
-      : new THREE.MeshStandardMaterial(o));
-    const wall = mk('stone_block', {
-      color: new THREE.Color(0.26, 0.26, 0.25), roughness: 0.93,
-    });
-    const steel = mk('metal_rusted', {
-      color: new THREE.Color(0.22, 0.21, 0.19), roughness: 0.86, metalness: 0.5,
-    });
-    this.mats = { wall, steel };
+    const sky = ctx.get('sky');
+    const L = ctx.get('lighting');
 
-    const built = buildCompound(this.rand);
+    /*
+     * MATERIALS — the same kit the town uses.
+     *
+     * `makeKitMaterials` wires each key to a procedural texture set with its
+     * albedo, normal, roughness and AO maps, and `injectWear` splices in the
+     * per-pixel weathering chunk that reads the `aWear` attribute Builder
+     * writes. That is where the rust runs under every fixing, the dirt splash
+     * off the ground and the sun bleaching on the copings come from — none of
+     * it is authored here, all of it is derived from geometry.
+     *
+     * `hex` breaks the texture repeat stochastically; it is worth paying for on
+     * the big flat block walls, which are exactly the surfaces where a visible
+     * tile is most obvious, and not worth it on the small metal parts.
+     */
+    const { mk } = makeKitMaterials(proc, 16);
+    const DEFS = [
+      ['concrete', 'stone_block', { nrm: 1.4, hex: 2.4 }],
+      ['rust', 'metal_rusted', { nrm: 1.15, metalness: 0.22, roughness: 0.88 }],
+      ['iron', 'corrugated_iron', { nrm: 1.35, metalness: 0.30, roughness: 0.64 }],
+      ['bag', 'canvas_tent', { nrm: 1.1, hex: 2.0 }],
+      ['gravel', 'gravel', { nrm: 1.2, hex: 3.0 }],
+    ];
+    this.mats = new Map();
+    for (const [key, tex, over] of DEFS) {
+      const opts = { hex: over.hex || 0 };
+      const clean = { ...over }; delete clean.hex;
+      const m = mk(key, tex, clean);
+      m.name = 'compound_' + key;
+      injectWear(m, opts);
+      if (sky && sky.injectAerialPerspective) sky.injectAerialPerspective(m);
+      if (L && L.registerMaterial) L.registerMaterial(m);
+      this.mats.set(key, m);
+    }
+    /* the floodlight lens: emissive, so the head reads as ON from any range
+       even when the point light behind it has been demoted out of the local
+       light budget (which is only 4 deep on the low preset) */
+    const lamp = new THREE.MeshStandardMaterial({
+      color: 0x111111, emissive: new THREE.Color(1.0, 0.90, 0.72),
+      emissiveIntensity: 3.4, roughness: 0.5, vertexColors: true, dithering: true,
+    });
+    lamp.name = 'compound_lamp';
+    this.mats.set('lamp', lamp);
+
+    /* Builder buckets by material NAME, so what buildYard needs is a map from
+       its own vocabulary to bucket keys, not the materials themselves. */
+    const keys = { concrete: 'concrete', rust: 'rust', iron: 'iron', bag: 'bag', gravel: 'gravel', lamp: 'lamp' };
+
+    const built = buildYard(this.site, this.rand, keys);
     this.built = built;
 
-    _q.setFromAxisAngle(UP, this.site.yaw);
-    _m.compose(this.site.pos, _q, _s);
+    /* One mesh per material bucket. Five or six draw calls for the whole
+       position, against the town's fifteen for a settlement. */
+    this.group = new THREE.Group();
+    this.group.name = 'compound';
+    this.meshes = [];
+    for (const [key, geo] of built.shell) {
+      const m = new THREE.Mesh(geo, this.mats.get(key));
+      m.name = 'compound:' + key;
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.group.add(m);
+      this.meshes.push(m);
+    }
+    ctx.scene.add(this.group);
+    this.shell = this.meshes[0] || null;
 
-    this.shell = new THREE.Mesh(built.shell, wall);
-    this.shell.name = 'compound:shell';
-    this.shell.castShadow = true;
-    this.shell.receiveShadow = true;
-    this.shell.applyMatrix4(_m);
-    ctx.scene.add(this.shell);
-
-    /* The gate gets its own node so it can be raised without touching the
-       wall it sits in. */
+    /* The gate gets its own node so it can be raised without touching the wall
+       it sits in. Built about its own origin, placed here. */
     this.gateGroup = new THREE.Group();
-    this.gateGroup.position.copy(this.site.pos);
+    this.gateGroup.name = 'compound:gate';
+    _q.setFromAxisAngle(UP, this.site.yaw);
     this.gateGroup.quaternion.copy(_q);
-    this.gate = new THREE.Mesh(built.gate, steel);
-    this.gate.name = 'compound:gate';
-    this.gate.castShadow = true;
-    this.gate.receiveShadow = true;
-    this.gateGroup.add(this.gate);
+    _v.set(built.gateAt.x, 0, built.gateAt.z).applyQuaternion(_q).add(this.site.pos);
+    this.gateGroup.position.copy(_v);
+    this._gateY0 = this.gateGroup.position.y;
+    this.gateParts = [];
+    for (const [key, geo] of built.gate) {
+      const m = new THREE.Mesh(geo, this.mats.get(key));
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.gateGroup.add(m);
+      this.gateParts.push(m);
+    }
+    this.gate = this.gateGroup;
     ctx.scene.add(this.gateGroup);
 
-    const L = ctx.get('lighting');
     if (L && L.requestShadowCaster) {
-      L.requestShadowCaster(this.shell);
-      L.requestShadowCaster(this.gate);
+      for (const m of this.meshes) L.requestShadowCaster(m);
+      for (const m of this.gateParts) L.requestShadowCaster(m);
     }
 
     /*
@@ -256,7 +309,7 @@ export class Compound {
      */
     this.lights = [];
     for (const lp of built.lamps) {
-      const w = lp.clone().applyMatrix4(_m);
+      const w = _v.set(lp.x, lp.y, lp.z).applyQuaternion(_q).add(this.site.pos).clone();
       const l = new THREE.PointLight(0xffe8c0, 26, 62, 1.7);
       l.position.copy(w);
       ctx.scene.add(l);
@@ -335,7 +388,9 @@ export class Compound {
     if (this.gateOpen !== want) {
       this.gateOpen += (want - this.gateOpen) * Math.min(1, (dt || 1 / 60) * 0.6);
       if (Math.abs(want - this.gateOpen) < 0.004) this.gateOpen = want;
-      if (this.gate) this.gate.position.y = this.gateOpen * (YARD.wallH + 0.6);
+      if (this.gateGroup) {
+        this.gateGroup.position.y = this._gateY0 + this.gateOpen * (YARD.wallH + 0.6);
+      }
     }
 
     /*
@@ -395,9 +450,10 @@ export class Compound {
       if (L && L.removeLight) L.removeLight(l);
       ctx.scene.remove(l);
     }
-    if (this.shell) { ctx.scene.remove(this.shell); this.shell.geometry.dispose(); }
-    if (this.gateGroup) { ctx.scene.remove(this.gateGroup); }
-    if (this.gate) this.gate.geometry.dispose();
-    for (const k in (this.mats || {})) this.mats[k].dispose();
+    if (this.group) ctx.scene.remove(this.group);
+    if (this.gateGroup) ctx.scene.remove(this.gateGroup);
+    for (const m of (this.meshes || [])) m.geometry.dispose();
+    for (const m of (this.gateParts || [])) m.geometry.dispose();
+    if (this.mats) for (const m of this.mats.values()) m.dispose();
   }
 }

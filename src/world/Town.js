@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
-import { Builder, Frame } from './town/Builder.js';
+import { Builder, Frame } from './build/Builder.js';
 import { Street, KINDS, SPECIALS, PLAN, sunAzimuthAt, streetBearing } from './town/Layout.js';
 import { buildPad, boardwalk, steps } from './town/Ground.js';
 import { TOWN_PLAN } from './town/Pad.js';
-import { buildBuilding, buildChurch, buildBarn } from './town/Buildings.js';
+import { buildBuilding, buildChurch, buildBarn } from './build/Buildings.js';
 import {
   hitchRail, trough, barrel, crate, wagonWheel, buckboard, telegraphPole,
   wire, fenceRun, waterTower, windmill, hayStack, lumberStack, lantern,
   signBoard, hangingSign, pebbleField,
-} from './town/Props.js';
-import { injectWear, makeTownMaterials } from './town/Wear.js';
+} from './build/Props.js';
+import { injectWear, makeKitMaterials } from './build/Wear.js';
 import { buildSignAtlas } from './town/Signs.js';
 import { buildCampfire, makeFlames } from './town/Campfire.js';
 import {
@@ -168,7 +168,7 @@ export class Town {
       : () => 0;
 
     /* --------------------------------------------------------- materials */
-    const { mk } = makeTownMaterials(proc, 16);
+    const { mk } = makeKitMaterials(proc, 16);
     this._wearOpts = new Map();
     for (const [key, tex, over] of MAT_DEFS) {
       const opts = { hex: over.hex || 0, timber: !!over.timber };
