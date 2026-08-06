@@ -1,6 +1,7 @@
-import { Builder, Frame } from '../../world/build/Builder.js';
+import { Builder, Frame, navCheck } from '../../world/build/Builder.js';
 import {
   IUV, buildBlockhouse, guardTower, sandbagCourse, hescoRun, drum, latticeMast,
+  stairRun,
 } from '../../world/build/Industrial.js';
 
 /**
@@ -203,11 +204,28 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
     const sy = H - 1.55;
     B.box(M.concrete, W, 0, run, t * 0.5, t * 0.5 + 1.35, sy, sy + 0.22,
       { us: IUV.concrete.us, vs: 0.4, wear, col: [0.66, 0.65, 0.62], nv: 1 });
+    /* R1: this is a level, so it declares itself. The walkable proxy is the
+       step slab only — the parapet above it is a wall, which is the whole
+       reason a man on the step is covered. */
+    const sc = W.p(run * 0.5, t * 0.5 + 0.675, sy + 0.11);
+    B.solid({ x: sc[0], y: sc[1], z: sc[2], hx: run * 0.5, hy: 0.11, hz: 0.675,
+      ax: W.ax, az: W.az, walkable: true, tag: 'wallwalk' });
+    if (o.node) B.node(o.node, { x: sc[0], y: sc[1] + 0.11, z: sc[2], kind: 'walk' });
     for (let i = 0; i <= n; i++) {
       const x = Math.min(run - 0.20, Math.max(0, i * bw - 0.20));
       B.box(M.concrete, W, x, x + 0.40, t * 0.5, t * 0.5 + 1.05, sy - 0.55, sy,
         { us: IUV.concrete.us, vs: 0.3, wear, col: [0.60, 0.59, 0.56], nu: 1, nv: 1 });
     }
+  }
+
+  /* R4: ONE proxy for the whole run. Collision is about where you may stand,
+     and a 90 mm coping oversail is not a place — a box per buttress would cost
+     five times as much and catch the player on every pilaster. */
+  {
+    const cc = W.p(run * 0.5, 0, (H - FOOT) * 0.5);
+    B.solid({ x: cc[0], y: cc[1], z: cc[2],
+      hx: run * 0.5, hy: (H + FOOT) * 0.5, hz: t * 0.5 + 0.30,
+      ax: W.ax, az: W.az, tag: 'wall' });
   }
 
   /* gabion revetment banked against the outside foot of the wall. This is the
@@ -327,11 +345,40 @@ export function buildYard(site, rand, M, getH) {
    * So: every run is walked so that its -z is outward. Do not reorder these
    * without re-running that measurement.
    */
-  wallRun(B, F, M, -halfX, halfZ, -halfX, -halfZ, ro);
-  wallRun(B, F, M, -gateW * 0.5, halfZ, -halfX, halfZ, ro);
-  wallRun(B, F, M, halfX, halfZ, gateW * 0.5, halfZ, ro);
-  wallRun(B, F, M, halfX, -halfZ, halfX, halfZ, ro);
-  wallRun(B, F, M, -halfX, -halfZ, halfX, -halfZ, ro);
+  wallRun(B, F, M, -halfX, halfZ, -halfX, -halfZ, { ...ro, node: 'walk:W' });
+  wallRun(B, F, M, -gateW * 0.5, halfZ, -halfX, halfZ, { ...ro, node: 'walk:NW' });
+  wallRun(B, F, M, halfX, halfZ, gateW * 0.5, halfZ, { ...ro, node: 'walk:NE' });
+  wallRun(B, F, M, halfX, -halfZ, halfX, halfZ, { ...ro, node: 'walk:E' });
+  wallRun(B, F, M, -halfX, -halfZ, halfX, -halfZ, { ...ro, node: 'walk:S' });
+
+  /*
+   * THE CIRCULATION GRAPH.
+   *
+   * The yard is the root. The wall walk is continuous around four of the five
+   * runs, so those runs simply meet at the corners; the two front runs are
+   * separated by the gate opening and are NOT joined to each other, which is
+   * correct and is also why the graph has to be a graph rather than a list.
+   */
+  B.node('ground', { x: F.p(0, 0, 0)[0], y: site.pos.y, z: F.p(0, 0, 0)[2], kind: 'ground' });
+  B.link('walk:W', 'walk:NW', 'corner');
+  B.link('walk:W', 'walk:S', 'corner');
+  B.link('walk:E', 'walk:NE', 'corner');
+  B.link('walk:E', 'walk:S', 'corner');
+
+  /* Two flights off the parade ground, one against each side wall, running
+     ALONG the wall the way a real one does rather than jutting into the yard.
+     Two rather than one because a single stair is a single point of failure in
+     a fight, and because the graph should not be a chain. */
+  const stepTop = wallTop - 1.33;
+  for (const [sx, node] of [[-1, 'walk:W'], [1, 'walk:E']]) {
+    const bx = sx * (halfX - 1.05);
+    const bz = sx > 0 ? 3.0 : -3.0;
+    const SF = F.sub(bx, bz, 0, sx > 0 ? -Math.PI * 0.5 : Math.PI * 0.5);
+    stairRun(B, SF, M, {
+      x: 0, z: 0, y0: gAt(bx, bz), y1: stepTop, w: 1.5, wear,
+      from: 'ground', to: node,
+    });
+  }
 
   /* gate piers, heavier than the curtain either side of the opening */
   for (const s of [-1, 1]) {
@@ -352,7 +399,18 @@ export function buildYard(site, rand, M, getH) {
     const k = Math.SQRT1_2;
     const T = F.sub(x, z, 0, Math.atan2(-sx * k, sz * k));
     const tg = gAt(x, z);
-    const r = guardTower(B, T, M, { h: 15.5 + (hiG - tg), r: 1.55, rand, ground: tg });
+    /*
+     * The tower ladder is linked from GROUND, not from the wall walk beside it,
+     * because that is where `guardTower` actually builds it — the towers stand
+     * 2.6 m inboard of the wall centreline and the walk only reaches 1.66 m in,
+     * so a link to the walk would be a metre of graph edge with nothing under
+     * it. Claiming a connection the geometry does not provide is precisely the
+     * failure R3 exists to prevent, and the rule applies to its author.
+     */
+    const r = guardTower(B, T, M, {
+      h: 15.5 + (hiG - tg), r: 1.55, rand, ground: tg,
+      node: 'tower:' + (sx > 0 ? 'E' : 'W') + (sz > 0 ? 'N' : 'S'), from: 'ground',
+    });
     lamps.push({ x: x + sx * k * r.lampZ, z: z + sz * k * r.lampZ, y: r.lampY });
   }
 
@@ -369,6 +427,7 @@ export function buildYard(site, rand, M, getH) {
   buildBlockhouse(B, depot, M, {
     w: 11, d: 9.0, h: 6.6, bay: 5.5, roof: 'flat', ground: gAt(13, -6),
     bays: ['shutter', 'vent'], shutterOpen: 0.62, grime: 0.72, bags: false,
+    node: 'roof:depot', from: 'ground',
   }, rand);
 
   /* the radio mast off the depot — the tallest thing in the valley after the
@@ -410,10 +469,36 @@ export function buildYard(site, rand, M, getH) {
   /* ---- THE GATE, in its own builder so the whole thing can be raised. Built
      about the gate's own origin; the caller places the group. */
   const GF = new Frame(0, 0, 0, 1, 0);
-  /* The leaves span from the road surface under the opening up to the same
-     level coping as the wall, so a gate on a slope is a taller gate — which is
-     what the hinges would actually have to carry. */
-  const gBase = gAt(0, halfZ) - 0.06;
+  /*
+   * THE THRESHOLD, and it is the fix for a gate that hangs in the air.
+   *
+   * The leaves were seated from ONE sample at the centre of the opening. The
+   * opening is nine metres wide and this site falls 3.9 m across its footprint,
+   * so one end met the road and the other end floated — visibly, in every shot
+   * of the gate. Sampling and taking the minimum would fix the float and leave
+   * a wedge of daylight instead.
+   *
+   * What a real gate has is a THRESHOLD: a level slab cast across the opening
+   * for the leaves to close onto, with the road ramped up to meet it. So the
+   * slab tops out just above the highest ground under the opening, the leaves
+   * hang from that, and there is nothing left to hang over.
+   */
+  let gHi = -1e9, gLo = 1e9;
+  for (let i = -5; i <= 5; i++) {
+    const gy2 = gAt((i / 5) * (gateW * 0.5 + 0.7), halfZ);
+    if (gy2 > gHi) gHi = gy2;
+    if (gy2 < gLo) gLo = gy2;
+  }
+  const gThr = gHi + 0.07;
+  {
+    const hw = gateW * 0.5 + 0.8;
+    B.box(M.concrete, F, -hw, hw, halfZ - 1.25, halfZ + 1.25, gLo - 0.9, gThr,
+      { us: IUV.concrete.us, vs: 0.6, wear, col: [0.72, 0.71, 0.68], nv: 1 });
+    const tc = F.p(0, halfZ, (gLo - 0.9 + gThr) * 0.5);
+    B.solid({ x: tc[0], y: tc[1], z: tc[2], hx: hw, hy: (gThr - gLo + 0.9) * 0.5, hz: 1.25,
+      ax: F.ax, az: F.az, walkable: true, tag: 'threshold' });
+  }
+  const gBase = gThr - 0.04;
   const gateH = wallTop - gBase;
   const gw = [gBase, wallTop + 1.0, 0.72, 0.40];
   for (const s of [-1, 1]) {
@@ -436,9 +521,19 @@ export function buildYard(site, rand, M, getH) {
       { us: 0.5, vs: 0.25, wear: gw, col: [0.78, 0.62, 0.16], nv: 1 });
   }
 
+  /*
+   * R2, enforced. A structure whose levels cannot all be reached from the
+   * ground is a build error, and it is caught here rather than in a screenshot
+   * — which could never have caught it, since a wall walk with no stair looks
+   * exactly like a wall walk with one.
+   */
+  const nav = navCheck(B.plan(), 'ground');
+
   return {
     shell: B.build(),
     gate: G.build(),
+    plan: B.plan(),
+    nav,
     lamps,
     posts,
     gateAt: { x: 0, z: halfZ, y: 0 },

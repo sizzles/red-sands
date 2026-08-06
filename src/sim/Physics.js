@@ -235,6 +235,8 @@ export class Physics {
     this.dynamics = [];
     this._cand = [];
     this._stamp = 0;
+    /** How many colliders are floors as well as walls. 0 = skip `deckAt`. */
+    this._walkables = 0;
     /** Rolling cost of the collider broad+narrow phase, ms per frame. */
     this.msColliders = 0;
     this._msAcc = 0;
@@ -284,6 +286,19 @@ export class Physics {
       ux: 1, uz: 0,
       mask: d.mask != null ? d.mask : LAYER.WORLD,
       solid: d.solid !== false,
+      /*
+       * WALKABLE. A collider is normally a wall: `_resolveColliders` pushes the
+       * capsule out of it in XZ and nothing else. Marking one walkable also
+       * makes its TOP a floor — `deckAt` will report it as ground and the
+       * controller will stand on it.
+       *
+       * Opt-in rather than automatic, because most solids must not be stood on:
+       * a boulder, a fence rail, a fuel drum and a horse are all colliders, and
+       * a character controller that snaps to the top of whatever it is nearest
+       * would put the player on the roof of the nearest oil drum every time
+       * they brushed past one.
+       */
+      walkable: !!d.walkable,
       queryable: d.queryable !== false,
       enabled: d.enabled !== false,
       owner: d.owner != null ? d.owner : null,
@@ -300,13 +315,54 @@ export class Physics {
       c.ux = d.axis[0] / l; c.uz = d.axis[1] / l;
     }
     this._aabb(c);
+    if (c.walkable) this._walkables++;
     if (c.kind === 'dynamic') this.dynamics.push(c);
     else this._grid.insert(c);
     return c;
   }
 
+  /**
+   * The height of the highest standable surface under (x, z) that the feet at
+   * `feetY` could be standing on or step up onto — or `-Infinity` if there is
+   * none, in which case the caller falls back to the terrain.
+   *
+   * This is the whole of "you can stand on things". `stepCharacter` takes ground
+   * as the max of the terrain and this, which is what turns a wall walk, a tower
+   * deck or a shed roof from scenery into a place.
+   *
+   * The XZ test is a POINT test against the collider's own frame, not a swept
+   * capsule: you come off the edge of a deck when your centre leaves it, which
+   * is the behaviour that reads as correct and is also the cheap one. The
+   * ceiling is `feetY + stepH` so a deck above your head is not something you
+   * teleport onto, and the floor is `feetY - fall` so a deck far below does not
+   * hold you up while you are falling past it.
+   */
+  deckAt(x, z, feetY, stepH = 0.42, mask = CHAR_MASK, fall = 2.5) {
+    if (!this._walkables) return -Infinity;
+    const list = this._gatherBox(x, z, x, z, mask);
+    let best = -Infinity;
+    const ceil = feetY + stepH;
+    const floor = feetY - fall;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (!c.walkable || !c.solid) continue;
+      const top = c.maxY;
+      if (top > ceil || top < floor || top <= best) continue;
+      const q = c.position;
+      const dx = x - q.x, dz = z - q.z;
+      if (c.shape === 'box') {
+        const lx = dx * c.ux + dz * c.uz;
+        const lz = -dx * c.uz + dz * c.ux;
+        if (Math.abs(lx) > c.hx || Math.abs(lz) > c.hz) continue;
+      } else if (dx * dx + dz * dz > c.radius * c.radius) continue;
+      best = top;
+    }
+    return best;
+  }
+
   removeCollider(c) {
     if (!c) return;
+    if (c.walkable && this._walkables > 0) this._walkables--;
     if (c.kind === 'dynamic') {
       const i = this.dynamics.indexOf(c);
       if (i >= 0) this.dynamics.splice(i, 1);
@@ -601,6 +657,9 @@ export class Physics {
     const slopeCos = s.maxSlopeCos != null ? s.maxSlopeCos : 0.60;   // ~53 deg
     const p = s.position, v = s.velocity;
     if (!s.groundNormal) s.groundNormal = new THREE.Vector3(0, 1, 0);
+    /* Skip every deck query in a world that has no walkable colliders in it —
+       which is this map, everywhere except the compound. */
+    const deck = this._walkables > 0 && s.decks !== false;
 
     if (!s.grounded) v.y += GRAVITY * h;
 
@@ -612,11 +671,24 @@ export class Physics {
       _b.copy(_a).multiplyScalar(1 / steps);
       for (let i = 0; i < steps; i++) {
         const nx = p.x + _b.x, nz = p.z + _b.z;
-        const hereY = world.getHeight(p.x, p.z);
-        const nextY = world.getHeight(nx, nz);
+        /* Ground is the terrain OR whatever walkable structure stands over it,
+           whichever is higher — so a stair tread, a wall walk and a shed roof
+           are all simply ground as far as the step test is concerned. */
+        let hereY = world.getHeight(p.x, p.z);
+        let nextY = world.getHeight(nx, nz);
+        const bareNext = nextY;
+        if (deck) {
+          const dh = this.deckAt(p.x, p.z, p.y, stepH, s.colliderMask);
+          if (dh > hereY) hereY = dh;
+          const dn = this.deckAt(nx, nz, p.y, stepH, s.colliderMask);
+          if (dn > nextY) nextY = dn;
+        }
         const rise = nextY - Math.max(p.y, hereY);
         world.getNormal(nx, nz, _n);
-        const blocked = rise > stepH || (rise > 0.06 && _n.y < slopeCos);
+        /* A deck is flat by construction, so the slope limit only applies when
+           the surface being stepped onto is actually the hillside. */
+        const onDeck = nextY > bareNext + 0.01;
+        const blocked = rise > stepH || (!onDeck && rise > 0.06 && _n.y < slopeCos);
         if (!blocked) {
           p.x = nx; p.z = nz;
         } else {
@@ -627,7 +699,12 @@ export class Physics {
             const into = _b.x * _c.x + _b.z * _c.z;
             if (into < 0) {
               const sx = _b.x - _c.x * into, sz = _b.z - _c.z * into;
-              if (world.getHeight(p.x + sx, p.z + sz) - Math.max(p.y, hereY) <= stepH) {
+              let sy = world.getHeight(p.x + sx, p.z + sz);
+              if (deck) {
+                const ds = this.deckAt(p.x + sx, p.z + sz, p.y, stepH, s.colliderMask);
+                if (ds > sy) sy = ds;
+              }
+              if (sy - Math.max(p.y, hereY) <= stepH) {
                 p.x += sx; p.z += sz;
               }
             }
@@ -655,7 +732,7 @@ export class Physics {
     // ---- registered colliders (rocks, buildings, the horse, animals, folk)
     if (this._grid.count || this.dynamics.length) {
       const t0 = performance.now();
-      this._resolveColliders(p, v, R, s.height || 1.8, s.colliderMask, s.colliderIgnore);
+      this._resolveColliders(p, v, R, s.height || 1.8, s.colliderMask, s.colliderIgnore, stepH);
       this._msAcc += performance.now() - t0;
     }
 
@@ -683,8 +760,15 @@ export class Physics {
 
     // ---- vertical: integrate then snap
     p.y += v.y * h;
-    const gy = world.getHeight(p.x, p.z);
+    let gy = world.getHeight(p.x, p.z);
     world.getNormal(p.x, p.z, _n);
+    if (deck) {
+      /* A tighter fall window than the step test uses: this decides what is
+         holding you UP, and a deck a storey below should not catch you while
+         you are still falling past it. */
+      const dh = this.deckAt(p.x, p.z, p.y, stepH, s.colliderMask, 1.2);
+      if (dh > gy) { gy = dh; _n.set(0, 1, 0); }
+    }
     const snap = s.grounded ? (s.snap != null ? s.snap : 0.35) : 0.02;
     if (p.y <= gy + snap && v.y <= 0.35) {
       p.y = gy;
@@ -717,7 +801,7 @@ export class Physics {
    * second on the same frame; the second pass settles that. Beyond two it is a
    * jitter source, not a fix.
    */
-  _resolveColliders(p, v, R, height, mask, ignore) {
+  _resolveColliders(p, v, R, height, mask, ignore, stepH = 0) {
     const m = mask != null ? mask : CHAR_MASK;
     for (let pass = 0; pass < 2; pass++) {
       const list = this._gatherBox(p.x - R, p.z - R, p.x + R, p.z + R, m);
@@ -729,6 +813,17 @@ export class Physics {
         if (!c.solid || c === ignore || (ignore && c.owner === ignore)) continue;
         // vertical span overlap: feet..head against the collider's own span
         if (c.maxY <= p.y + 0.04 || c.minY >= p.y + height) continue;
+        /*
+         * A WALKABLE SURFACE WITHIN STEP HEIGHT IS A FLOOR, NOT A WALL.
+         *
+         * The order inside stepCharacter is: horizontal move, push-out, then
+         * the vertical snap. So on the frame you first put a foot on a stair
+         * tread, the move has already allowed it but your y is still down at the
+         * old level — and without this the push-out sees a solid whose top is
+         * above your feet and shoves you straight back off it. You would climb
+         * nothing, forever, and it would read as the stair being too steep.
+         */
+        if (c.walkable && stepH > 0 && c.maxY <= p.y + stepH) continue;
         const q = c.position;
         let nx, nz, pen;
         if (c.shape === 'box') {

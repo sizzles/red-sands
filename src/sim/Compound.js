@@ -173,6 +173,47 @@ export class Compound {
     ctx.scene.add(this.group);
     this.shell = this.meshes[0] || null;
 
+    /*
+     * COLLISION AND CIRCULATION.
+     *
+     * Until this pass the compound registered no colliders at all: the player
+     * could ride straight through the curtain wall, the towers and the shut
+     * gate, which no screenshot was ever going to reveal. The kit now emits
+     * proxies alongside the mesh from the same rules (see build/Builder.js),
+     * so they cannot drift apart from the geometry they stand for.
+     *
+     * `walkable` is what makes a surface a floor rather than only a wall —
+     * Physics.deckAt reports its top as ground, so the wall walk, the tower
+     * decks and the depot roof are places the garrison and the player can
+     * actually stand.
+     */
+    this.solids = [];
+    const P = ctx.get('physics');
+    if (P && P.addCollider) {
+      for (const q of built.plan.solids) {
+        this.solids.push(P.addCollider({
+          shape: 'box',
+          /* `addCollider` takes the CENTRE for a box (it is the base only for a
+             capsule), and Builder.solid emits centres, so this passes straight
+             through. Getting it wrong here buries every proxy by half its own
+             height and puts every walkable top a half-thickness low. */
+          position: new THREE.Vector3(q.x, q.y, q.z),
+          halfExtents: { x: q.hx, y: q.hy, z: q.hz },
+          axis: [q.ax, q.az],
+          walkable: q.walkable,
+          tag: 'compound:' + q.tag,
+        }));
+      }
+    }
+    /* R2: every level the compound builds must be reachable from the yard.
+       Cheap enough to assert at runtime, and the one failure mode that looks
+       completely correct in a render. */
+    if (built.nav && !built.nav.ok) {
+      // eslint-disable-next-line no-console
+      console.warn('[compound] unreachable levels', built.nav.unreachable,
+        'dangling links', built.nav.dangling);
+    }
+
     /* The gate gets its own node so it can be raised without touching the wall
        it sits in. Built about its own origin, placed here. */
     this.gateGroup = new THREE.Group();
@@ -246,6 +287,22 @@ export class Compound {
       _v.set(p.x, 0, p.z).applyQuaternion(_q).add(this.site.pos);
       _v.y = this.ctx.world.getHeight(_v.x, _v.z);
       cordon.addPost(_v.clone(), this.site.yaw + Math.PI, 4, 'compound');
+    }
+    /*
+     * AND ON THE WALL. The embrasures are at standing height behind the
+     * fighting step for a reason, and until the garrison could be held up by
+     * something other than the hillside there was nobody to fire through them.
+     * The circulation graph already knows where every level is, so the posts
+     * come straight off it rather than being placed by hand and drifting.
+     */
+    const nodes = this.built.plan && this.built.plan.nodes;
+    if (!nodes) return;
+    for (const [id, n] of nodes) {
+      if (n.kind !== 'walk' && n.kind !== 'deck') continue;
+      _v.set(n.x, n.y + 0.05, n.z);
+      cordon.addPost(_v.clone(), this.site.yaw + Math.PI,
+        n.kind === 'walk' ? 3 : 1, 'compound');
+      void id;
     }
   }
 
@@ -370,5 +427,7 @@ export class Compound {
     for (const m of (this.meshes || [])) m.geometry.dispose();
     for (const m of (this.gateParts || [])) m.geometry.dispose();
     if (this.mats) for (const m of this.mats.values()) m.dispose();
+    const P = ctx.get('physics');
+    if (P && P.removeCollider) for (const c of (this.solids || [])) P.removeCollider(c);
   }
 }

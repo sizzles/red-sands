@@ -73,6 +73,85 @@ export class Builder {
     /** Default wear payload, overridable per call. */
     this.wear = [1, 4, 0.6, 0.4];
     this.col = [1, 1, 1];
+    /* ---- the two channels beside the mesh; see the block comment below ---- */
+    /** @type {Array<object>} collision proxies, world space */
+    this.solids = [];
+    /** @type {Map<string, object>} standable levels this structure creates */
+    this.nodes = new Map();
+    /** @type {Array<object>} the ways between them */
+    this.links = [];
+  }
+
+  /*
+   * ==========================================================================
+   * THREE CHANNELS OUT OF ONE SET OF RULES
+   *
+   * A shape grammar that emits only geometry can only be wrong in ways you have
+   * to LOOK at, and looking is unreliable: this kit shipped a compound whose
+   * every wall was built inside out and four renders read it as "the relief is
+   * too shallow", because a wall with its detail on the far side photographs
+   * exactly like a wall whose detail is too shallow.
+   *
+   * So the same rules emit three things:
+   *
+   *   quad/box/tube   GEOMETRY     what it looks like
+   *   solid()         COLLISION    what stops you
+   *   node()/link()   CIRCULATION  where you can get to
+   *
+   * and the last two are numbers, so they can be TESTED instead of inspected.
+   * Four rules govern them:
+   *
+   *   R1  EVERY LEVEL DECLARES A NODE. Any horizontal surface a person could
+   *       stand on above ground — wall walk, tower deck, roof, catwalk — calls
+   *       node().
+   *   R2  EVERY NODE NEEDS AN EDGE. A node with no path back to the ground
+   *       component is a BUILD ERROR, not a visual nit. `navCheck` is the test.
+   *   R3  EDGES ARE GEOMETRY. `stairRun` emits treads AND the link. You may not
+   *       declare a connection you did not build; that is the failure mode this
+   *       whole idea exists to prevent.
+   *   R4  SOLIDS FOLLOW THE SILHOUETTE, NOT THE DETAIL. One box per wall run,
+   *       not one per buttress. Collision is about where you may stand, and a
+   *       90 mm coping oversail is not a place.
+   * ==========================================================================
+   */
+
+  /**
+   * Register a collision proxy in WORLD space.
+   * @param {object} o { x, y, z, hx, hy, hz, ax, az, walkable, tag }
+   *        (x,y,z) is the CENTRE; hy is the half-height, so the top is y + hy.
+   *        (ax,az) is the box's +x axis in world XZ; defaults to +x.
+   */
+  solid(o) {
+    /* Orientation is carried as the box's +x AXIS, not a yaw. `Physics.addCollider`
+       takes an axis directly, so passing one through means no trig on the way in
+       and no trig on the way out — and a sign convention that cannot be got
+       backwards, which on this kit is not a theoretical concern. */
+    this.solids.push({
+      x: o.x, y: o.y, z: o.z,
+      hx: o.hx, hy: o.hy, hz: o.hz,
+      ax: o.ax != null ? o.ax : 1,
+      az: o.az != null ? o.az : 0,
+      walkable: !!o.walkable,
+      tag: o.tag || '',
+    });
+    return this;
+  }
+
+  /** Declare a standable level. `id` must be unique within the structure. */
+  node(id, o) {
+    this.nodes.set(id, { id, x: o.x, y: o.y, z: o.z, kind: o.kind || 'deck' });
+    return this;
+  }
+
+  /** Declare a way between two levels. Both ids must exist by the end. */
+  link(a, b, kind = 'stair') {
+    this.links.push({ a, b, kind });
+    return this;
+  }
+
+  /** The collision + circulation half of the build. */
+  plan() {
+    return { solids: this.solids, nodes: this.nodes, links: this.links };
   }
 
   bucket(name) {
@@ -423,6 +502,58 @@ export class Builder {
   stats() {
     let v = 0, t = 0;
     for (const b of this.buckets.values()) { v += b.n; t += b.idx.length / 3; }
-    return { buckets: this.buckets.size, verts: v, tris: t };
+    return {
+      buckets: this.buckets.size, verts: v, tris: t,
+      solids: this.solids.length, nodes: this.nodes.size, links: this.links.length,
+    };
   }
+}
+
+/**
+ * navCheck — the test that rule R2 is actually true.
+ *
+ * Flood-fills the circulation graph from `root` and reports every level that is
+ * not reachable from it, plus every link that names a node nobody declared.
+ * Pure arithmetic on a handful of objects: it runs in microseconds, needs no
+ * renderer, and it answers the one question a screenshot cannot, which is
+ * whether the affordances a structure advertises can actually be used.
+ *
+ * Worth being blunt about why this exists. The compound was shipped with firing
+ * embrasures at standing height, a fighting step to stand on behind them and
+ * caged ladders up all four towers — a complete set of affordances, none of
+ * which could be reached, and none of which was solid enough to stop anybody
+ * either. Nothing in a screenshot says so.
+ *
+ * @param {{nodes:Map, links:Array}} plan
+ * @param {string} root the node everything must be reachable from
+ * @returns {{ok:boolean, unreachable:string[], dangling:string[], reached:number}}
+ */
+export function navCheck(plan, root = 'ground') {
+  const { nodes, links } = plan;
+  const dangling = [];
+  const adj = new Map();
+  for (const id of nodes.keys()) adj.set(id, []);
+  for (const l of links) {
+    let bad = false;
+    if (!nodes.has(l.a)) { dangling.push(l.a); bad = true; }
+    if (!nodes.has(l.b)) { dangling.push(l.b); bad = true; }
+    if (bad) continue;
+    adj.get(l.a).push(l.b);
+    adj.get(l.b).push(l.a);       // every way up is a way down
+  }
+  const seen = new Set();
+  if (nodes.has(root)) {
+    const stack = [root];
+    seen.add(root);
+    while (stack.length) {
+      for (const n of adj.get(stack.pop())) {
+        if (!seen.has(n)) { seen.add(n); stack.push(n); }
+      }
+    }
+  }
+  const unreachable = [...nodes.keys()].filter((id) => !seen.has(id));
+  return {
+    ok: unreachable.length === 0 && dangling.length === 0 && nodes.has(root),
+    unreachable, dangling: [...new Set(dangling)], reached: seen.size,
+  };
 }

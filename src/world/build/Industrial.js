@@ -359,6 +359,34 @@ export function buildBlockhouse(B, F, M, spec, rand) {
   if (spec.bags !== false) {
     sandbagCourse(B, F, M, 0.4, w - 0.4, -0.30, g, { wear, rand, rows: 2 });
   }
+  /* ---- collision and circulation. The mass is one box; a flat roof is a
+     level and therefore declares a node, a pitched iron one does not. */
+  const c = F.p(w * 0.5, d * 0.5, 0);
+  B.solid({ x: c[0], y: F.oy + g + h * 0.5, z: c[2],
+    hx: w * 0.5 + 0.12, hy: h * 0.5, hz: d * 0.5 + 0.12, ax: F.ax, az: F.az, tag: 'building' });
+  if (spec.roof !== 'iron') {
+    B.solid({ x: c[0], y: F.oy + g + h + 0.08, z: c[2],
+      hx: w * 0.5, hy: 0.10, hz: d * 0.5, ax: F.ax, az: F.az, walkable: true, tag: 'roof' });
+    if (spec.node) {
+      B.node(spec.node, { x: c[0], y: F.oy + g + h + 0.18, z: c[2], kind: 'roof' });
+      if (spec.from) {
+        /* R3: the link does not exist unless the ladder does. Up the gable end,
+           caged, landing over the parapet. */
+        const lx = w + 0.16, lz = d * 0.5;
+        const rc = { us: 0.4, vs: 0.4, wear, col: [0.46, 0.47, 0.46] };
+        for (const off of [-0.22, 0.22]) {
+          B.tube(M.rust, F.p(lx, lz + off, g), F.p(lx, lz + off, g + h + 0.85),
+            0.030, 0.030, 5, rc);
+        }
+        for (let y = g + 0.30; y < g + h + 0.7; y += 0.30) {
+          B.tube(M.rust, F.p(lx, lz - 0.22, y), F.p(lx, lz + 0.22, y), 0.018, 0.018, 4, rc);
+        }
+        B.solid({ x: F.p(lx, lz, 0)[0], y: F.oy + g + h * 0.5, z: F.p(lx, lz, 0)[2],
+          hx: 0.12, hy: h * 0.5, hz: 0.30, ax: F.ax, az: F.az, tag: 'ladder' });
+        B.link(spec.from, spec.node, 'ladder');
+      }
+    }
+  }
   return { w, d, h, wear };
 }
 
@@ -456,7 +484,91 @@ export function guardTower(B, F, M, s) {
       B.tube(M.rust, F.p(lx - 0.22, lz, y), F.p(lx + 0.22, lz, y), 0.019, 0.019, 4, rc);
     }
   }
+  /* ---- collision and circulation -----------------------------------------
+   * The leg square is one box rather than four: R4 says collision follows the
+   * silhouette, and a character wedged between two 190 mm legs is a bug report,
+   * not fidelity. The deck is walkable, and the ladder is the edge that earns
+   * it — `from` is whatever level the ladder's foot lands on, which for these
+   * towers is the wall walk rather than the ground, because a ladder that runs
+   * the full fifteen metres off the parade ground is a ladder nobody climbs. */
+  const wp = F.p(0, 0, 0);
+  B.solid({ x: wp[0], y: F.oy + g + (dy - g) * 0.5, z: wp[2],
+    hx: r + 0.25, hy: (dy - g) * 0.5, hz: r + 0.25, ax: F.ax, az: F.az, tag: 'tower' });
+  /* The proxy's top must be the plate's top, not a guess: the deck plate is
+     dy..dy+0.10, so this is centred at dy+0.05 with a half-height of 0.05. An
+     11 cm error here is 11 cm of standing on nothing. */
+  B.solid({ x: wp[0], y: F.oy + dy + 0.05, z: wp[2],
+    hx: dk, hy: 0.05, hz: dk, ax: F.ax, az: F.az, walkable: true, tag: 'tower_deck' });
+  if (s.node) {
+    B.node(s.node, { x: wp[0], y: F.oy + dy + 0.10, z: wp[2], kind: 'deck' });
+    if (s.from) B.link(s.from, s.node, 'ladder');
+  }
   return { deckY: dy, lampY: dy + 1.5, lampZ: dk + 0.8 };
+}
+
+/* ------------------------------------------------------------- circulation */
+
+/**
+ * A flight of stairs, and the LINK that goes with it.
+ *
+ * Rule R3 lives here: this emits the treads, the stringers, the handrail, the
+ * walkable collision for each tread AND the graph edge, all from one call. You
+ * cannot get the connection without building something to walk on, and you
+ * cannot build something to walk on without the graph knowing about it. That is
+ * the entire point — the failure this kit actually shipped was a set of levels
+ * with no way between them and nobody noticing.
+ *
+ * Runs in the frame's +x direction, rising as it goes. Riser is held near
+ * 190 mm and the going near 280 mm, which is a real stair and, more usefully,
+ * comfortably inside the controller's 420 mm step height, so the capsule walks
+ * up it without any special case.
+ *
+ * @param {object} o { x, z, y0, y1, w, from, to, rail }
+ */
+export function stairRun(B, F, M, o) {
+  const y0 = o.y0, y1 = o.y1;
+  const rise = y1 - y0;
+  if (rise < 0.12) return;
+  const w = o.w != null ? o.w : 1.5;
+  const n = Math.max(2, Math.round(rise / 0.19));
+  const r = rise / n;                       // actual riser
+  const g = o.going != null ? o.going : 0.29;
+  const x0 = o.x, z = o.z;
+  const wear = o.wear;
+  const tread = { us: IUV.concrete.us, vs: 0.4, wear, col: [0.72, 0.71, 0.67], nu: 1, nv: 1 };
+
+  for (let i = 0; i < n; i++) {
+    const tx = x0 + i * g;
+    const ty = y0 + (i + 1) * r;
+    /* Each tread is a solid block down to the flight below it rather than a
+       plate on legs: it is cheaper, it cannot be seen under, and it gives the
+       collision proxy something honest to be. */
+    B.box(M.concrete, F, tx, tx + g + 0.02, z - w * 0.5, z + w * 0.5, ty - r - 0.02, ty, tread);
+    /* one walkable proxy per tread — the controller steps up r each time */
+    const wp = F.p(tx + g * 0.5, z, 0);
+    B.solid({
+      x: wp[0], y: (F.oy + ty) - r * 0.5, z: wp[2],
+      hx: g * 0.55, hy: r * 0.5, hz: w * 0.5, ax: F.ax, az: F.az,
+      walkable: true, tag: 'stair',
+    });
+  }
+  /* stringer down each side, so the flight has an edge rather than floating */
+  const st = { us: IUV.concrete.us, vs: 0.4, wear, col: [0.62, 0.61, 0.58], nu: 1, nv: 1 };
+  for (const sw of [-1, 1]) {
+    const zz = z + sw * (w * 0.5 + 0.06);
+    B.box(M.concrete, F, x0 - 0.05, x0 + n * g + 0.05, zz - 0.06, zz + 0.06, y0 - 0.35, y0 + rise * 0.55, st);
+  }
+  /* handrail on the open side */
+  if (o.rail !== false) {
+    const zz = z - (w * 0.5 + 0.09);
+    const rc = { us: 0.4, vs: 0.4, wear, col: [0.44, 0.45, 0.44] };
+    B.tube(M.rust, F.p(x0, zz, y0 + 0.95), F.p(x0 + n * g, zz, y1 + 0.95), 0.035, 0.035, 5, rc);
+    for (let i = 0; i <= n; i += 3) {
+      const tx = x0 + i * g;
+      B.tube(M.rust, F.p(tx, zz, y0 + r * i), F.p(tx, zz, y0 + r * i + 0.98), 0.030, 0.030, 4, rc);
+    }
+  }
+  if (o.from && o.to) B.link(o.from, o.to, 'stair');
 }
 
 /* -------------------------------------------------------------- perimeter kit */

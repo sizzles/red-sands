@@ -101,6 +101,9 @@ export class Cordon {
     const ctx = this.ctx;
     const q = ctx.quality || {};
     const total = POPULATION[q.name] != null ? POPULATION[q.name] : POPULATION.medium;
+    /* Held rather than looked up per agent per frame: `_standY` is on the hot
+       path for every trooper alive. */
+    this._physics = ctx.get('physics') || null;
 
     for (const name of Object.keys(TYPES)) {
       const def = TYPES[name];
@@ -237,6 +240,25 @@ export class Cordon {
    * `tag` marks posts that should not get a roadblock built on them — the
    * compound has its own walls.
    */
+  /**
+   * Ground height for a man standing at (x, z), which is the terrain OR
+   * whatever built surface is over it — see Physics.deckAt.
+   *
+   * Without this the garrison snaps to the heightfield every frame, so a post
+   * on the compound's wall walk drops its trooper straight through the walk
+   * onto the parade ground. Fighting positions above ground level are the whole
+   * point of a wall, and they need the same capability the player controller
+   * got: the ability to be held up by something other than the hillside.
+   */
+  _standY(x, z, fromY, window = 0.55) {
+    const world = this.ctx.world;
+    const gy = world.getHeight(x, z);
+    const P = this._physics;
+    if (!P) return gy;
+    const d = P.deckAt(x, z, fromY, window, undefined, window);
+    return d > gy ? d : gy;
+  }
+
   addPost(pos, yaw, size = 3, tag = null) {
     this._posts.push({
       pos: pos.clone(), yaw, size,
@@ -340,7 +362,10 @@ export class Cordon {
     const def = a.type.def;
     const rand = this.rand;
     a.alive = true;
-    a.pos.set(x, world.getHeight(x, z), z);
+    /* Generous window on the spawn: a post on the wall walk is nearly four
+       metres above the hillside under it, and if the first frame puts the
+       trooper on the terrain he will never find his way back up. */
+    a.pos.set(x, this._standY(x, z, (post && post.pos.y) || world.getHeight(x, z), 1.6), z);
     a.home.copy(a.pos);
     a.post = post;
     a.yaw = post ? post.yaw + (rand() - 0.5) * 1.6 : rand() * 6.283;
@@ -553,7 +578,7 @@ export class Cordon {
       while (dy < -Math.PI) dy += Math.PI * 2;
       a.yaw += dy * Math.min(1, h * (a.state >= ENGAGE ? 6 : 2.6));
     }
-    a.pos.y = world.getHeight(a.pos.x, a.pos.z);
+    a.pos.y = this._standY(a.pos.x, a.pos.z, a.pos.y, 0.55);
 
     a.phase += (a.speed * h) / 1.45 * 6.2831;
     a.gait += (THREE.MathUtils.clamp(a.speed / (def.speed * 0.8), 0, 1) - a.gait)
