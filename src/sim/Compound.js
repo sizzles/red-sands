@@ -154,7 +154,7 @@ export class Compound {
        its own vocabulary to bucket keys, not the materials themselves. */
     const keys = { concrete: 'concrete', rust: 'rust', iron: 'iron', bag: 'bag', gravel: 'gravel', lamp: 'lamp' };
 
-    const built = buildYard(this.site, this.rand, keys);
+    const built = buildYard(this.site, this.rand, keys, ctx.world.getHeight);
     this.built = built;
 
     /* One mesh per material bucket. Five or six draw calls for the whole
@@ -208,11 +208,23 @@ export class Compound {
     this.lights = [];
     for (const lp of built.lamps) {
       const w = _v.set(lp.x, lp.y, lp.z).applyQuaternion(_q).add(this.site.pos).clone();
-      const l = new THREE.PointLight(0xffe8c0, 26, 62, 1.7);
+      /*
+       * Intensity is not a taste value here, it is arithmetic. These sit on the
+       * tower decks, 17 m up, and three.js attenuates by distance^decay — so the
+       * 26 the ground-level lanterns use arrives at the yard as 26/17^1.7, or
+       * about a fifth of a unit, which is why the first night shot had four
+       * glowing heads and not one lit surface anywhere. Scaled by (17/3)^1.7 to
+       * put the same illuminance on the ground that a lantern puts on a table,
+       * with the range opened up to cover the approach as well as the yard.
+       */
+      const l = new THREE.PointLight(0xffe8c0, 460, 105, 1.7);
       l.position.copy(w);
       ctx.scene.add(l);
       this.lights.push(l);
-      if (L && L.addLight) L.addLight(l, { flicker: 0.02, radius: 62, importance: 3.0 });
+      /* Importance well above anything else in the world: the local light pool
+         is only four deep on the phone preset, and the one place where being
+         demoted would be visible is the one place that has four lights. */
+      if (L && L.addLight) L.addLight(l, { flicker: 0.02, radius: 105, importance: 6.0 });
     }
   }
 

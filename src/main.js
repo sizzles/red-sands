@@ -92,7 +92,7 @@ const LABELS = {
   bike: 'kicking it over', wildlife: 'releasing the herds',
   riven: 'listening for the horde', cordon: 'manning the checkpoints',
   loot: 'hiding the caches', garage: 'laying out the tools',
-  compound: 'closing the pass',
+  compoundSite: 'closing the pass', compound: 'walling the pass',
   camera: 'framing the shot', postfx: 'grading the film',
   audio: 'tuning the wind', hud: 'final touches', touch: 'final touches', ready: 'ready',
 };

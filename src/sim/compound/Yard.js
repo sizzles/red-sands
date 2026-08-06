@@ -96,20 +96,50 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
   /* the curtain */
   B.box(M.concrete, W, 0, run, -t * 0.5, t * 0.5, 0.46, H, face);
 
-  /* buttresses on the OUTSIDE face only, at every bay joint */
-  const bc = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 1.05, CONC[1] * 1.04, CONC[2] * 1.02], nu: 1 };
+  /*
+   * RELIEF, and the first build did not have enough of it.
+   *
+   * The close shot of the curtain came back as a flat plane with a good texture
+   * on it: correct masonry courses, no visible repeat, and no architecture. A
+   * 300 mm buttress on a 5.4 m wall is right by the book and photographs as
+   * nothing, because relief only reads through the shadow it casts and at the
+   * sun angles this valley actually spends its time at, 300 mm casts about a
+   * hand's width. Three elements fix it, and all three are what a real mass
+   * concrete wall has anyway:
+   *
+   *   BUTTRESSES  550 mm proud, 850 mm wide, at every bay joint. Deep enough
+   *               to throw a shadow across the panel beside them.
+   *   PANELS      one proud field per bay, held back from the buttresses, so
+   *               there is a continuous shadow line boxing every bay.
+   *   STRING      a horizontal band below the coping. A tall blank wall needs
+   *               one horizontal to read its own height against.
+   */
+  const bd = 0.55, bwid = 0.85;
+  const bc = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 1.06, CONC[1] * 1.05, CONC[2] * 1.02], nu: 1 };
   for (let i = 0; i <= n; i++) {
-    const x = Math.min(run - 0.30, Math.max(0, i * bw - 0.30));
-    B.box(M.concrete, W, x, x + 0.60, -t * 0.5 - 0.30, -t * 0.5 + 0.01, 0.30, H - 0.35, bc);
+    const x = Math.min(run - bwid, Math.max(0, i * bw - bwid * 0.5));
+    B.box(M.concrete, W, x, x + bwid, -t * 0.5 - bd, -t * 0.5 + 0.01, 0.20, H - 0.30, bc);
     /* a weathered splay at the top of each buttress, so it dies into the wall
        instead of stopping in mid-air */
-    B.box(M.concrete, W, x, x + 0.60, -t * 0.5 - 0.16, -t * 0.5 + 0.01, H - 0.35, H - 0.05, bc);
+    B.box(M.concrete, W, x, x + bwid, -t * 0.5 - bd * 0.45, -t * 0.5 + 0.01, H - 0.30, H - 0.02, bc);
   }
+  /* proud panel per bay */
+  const pnl = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 0.96, CONC[1] * 0.96, CONC[2] * 0.97] };
+  for (let i = 0; i < n; i++) {
+    const x0p = i * bw + bwid * 0.5 + 0.22;
+    const x1p = (i + 1) * bw - bwid * 0.5 - 0.22;
+    if (x1p - x0p < 0.5) continue;
+    B.box(M.concrete, W, x0p, x1p, -t * 0.5 - 0.17, -t * 0.5 + 0.01, 0.86, H - 1.55, pnl);
+  }
+  /* string course, running the whole length under the coping */
+  B.box(M.concrete, W, -0.04, run + 0.04, -t * 0.5 - 0.24, t * 0.5 + 0.05, H - 1.42, H - 1.10,
+    { us: IUV.concrete.us, vs: 0.32, wear, col: [0.80, 0.79, 0.75], nv: 1 });
 
-  /* COPING. Oversails 90 mm both faces: the drip line under it is what turns
-     the top of a wall into an edge you can see at distance. */
-  B.box(M.concrete, W, -0.06, run + 0.06, -t * 0.5 - 0.09, t * 0.5 + 0.09, H, H + 0.20,
-    { us: IUV.concrete.us, vs: 0.35, wear, col: [0.84, 0.83, 0.79], nv: 1 });
+  /* COPING. Oversails 160 mm both faces: the drip line under it is what turns
+     the top of a wall into an edge you can see at distance, and at 90 mm it was
+     not clearing the string course below it. */
+  B.box(M.concrete, W, -0.06, run + 0.06, -t * 0.5 - 0.28, t * 0.5 + 0.16, H, H + 0.24,
+    { us: IUV.concrete.us, vs: 0.35, wear, col: [0.86, 0.85, 0.81], nv: 1 });
 
   /* fighting step on the inside — a walkway 1.55 m below the top on corbels.
      It explains where the figures on the wall are standing, which is the only
@@ -140,9 +170,10 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
  * @param {{pos:THREE.Vector3, yaw:number}} site
  * @param {function} rand deterministic RNG
  * @param {object} M material map — keys concrete, rust, iron, bag, gravel, lamp
+ * @param {function} [getH] world height query, for draping the yard surface
  * @returns {{ shell:Map, gate:Map, lamps:Array, posts:Array, gateAt:object }}
  */
-export function buildYard(site, rand, M) {
+export function buildYard(site, rand, M, getH) {
   const B = new Builder();
   const G = new Builder();
   const { halfX, halfZ, wallH, gateW } = YARD;
@@ -154,10 +185,35 @@ export function buildYard(site, rand, M) {
   const wear = [0, wallH + 2.0, 0.66, 0.32];
   B.wear = wear;
 
-  /* ---- the yard surface. Gravel, laid inside the walls, standing 80 mm proud
-     so it is a made surface rather than the hillside showing through. */
-  B.faceY(M.gravel, F, 0.08, -halfX + 0.4, halfX - 0.4, -halfZ + 0.4, halfZ - 0.4, +1,
-    { us: IUV.gravel.us, vs: IUV.gravel.vs, wear, col: [0.60, 0.58, 0.54], step: 6 });
+  /*
+   * THE YARD SURFACE. Gravel, laid inside the walls.
+   *
+   * DRAPED, not flat. Measured cross-fall under this footprint is 3.9 m over
+   * 52 metres, so a flat plate at the site elevation is buried at the high end
+   * and floating at the low end by nearly two metres each — which is what a
+   * graded pad would fix, except that `Terrain.addHeightOverride` is fill-only
+   * and Compound cannot register one late enough to matter without burying the
+   * road that runs through the gate. Following the ground is the honest answer
+   * at this scale: a bulldozed yard is levelled, not benched, and 7% is what a
+   * levelled yard on a hillside actually looks like.
+   *
+   * `quad`'s `warp` hook gets the height query per interpolated vertex, and
+   * `step: 4` gives it a vertex every four metres to work with.
+   */
+  {
+    const y0 = site.pos.y;
+    const H = getH;
+    const warp = H ? (u, v, p) => { p[1] = H(p[0], p[2]) + 0.09; } : null;
+    const a = F.p(-halfX + 0.4, -halfZ + 0.4, 0.09);
+    const b = F.p(halfX - 0.4, -halfZ + 0.4, 0.09);
+    const c = F.p(halfX - 0.4, halfZ - 0.4, 0.09);
+    const d = F.p(-halfX + 0.4, halfZ - 0.4, 0.09);
+    B.quad(M.gravel, a, b, c, d, {
+      us: IUV.gravel.us, vs: IUV.gravel.vs, wear, col: [0.60, 0.58, 0.54],
+      step: 4, warp,
+    });
+    void y0;
+  }
 
   /* ---- perimeter. The road enters on -Z and leaves on +Z, so the gap is in
      the +Z wall and the gate closes it. The back wall is solid: the way you
