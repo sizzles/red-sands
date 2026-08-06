@@ -1,0 +1,15 @@
+{
+  "name": "Broken Road",
+  "short_name": "Broken Road",
+  "description": "An open-world survival ride through the Cascade Range.",
+  "start_url": "/?quality=mobile",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0a0b0c",
+  "theme_color": "#0a0b0c",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -29,6 +29,21 @@
 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!--
+  INSTALLABLE, and on iPhone that is not a nicety.
+  Safari on iPhone does not implement the Fullscreen API at all — only iPad does
+  — so the touch overlay's requestFullscreen() call is a silent no-op there and
+  the player keeps the browser's address bar and toolbar, on the device with the
+  least screen to spare. Add to Home Screen is the ONLY route to a real
+  fullscreen game on that platform, and these three lines are what make it work.
+  `start_url` carries the mobile preset so an installed copy never has to guess.
+-->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Broken Road">
 <style>
   html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000;color:#d5dbd6;
     font-family:"Times New Roman",Georgia,serif;-webkit-font-smoothing:antialiased}

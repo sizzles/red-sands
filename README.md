@@ -215,6 +215,51 @@ tonemapping with a strictly monotone highlight shoulder.
 
 ## On a phone
 
+**Running it on your own phone**, easiest first:
+
+```bash
+# 1. Same Wi-Fi as your computer — fastest to iterate on
+npm run dev:lan          # then open the Network URL it prints, e.g.
+                         # http://192.168.1.24:5173
+```
+
+The plain `npm run dev` binds to `127.0.0.1` and your phone cannot reach it;
+`dev:lan` is the same server bound to all interfaces. If nothing loads, your
+network is probably isolating clients (common on guest and corporate Wi-Fi) —
+use a hotspot from the phone itself, or deploy:
+
+```bash
+# 2. A real URL, works anywhere, including cellular
+npx vercel --prod        # the repo is already configured for it
+```
+
+```bash
+# 3. Any static host
+npm run build            # writes dist/ — upload it anywhere
+npm run preview:lan      # or serve the built copy on the LAN to check it first
+```
+
+**Add to Home Screen.** Do this on iPhone. Safari on iPhone does not implement
+the Fullscreen API at all (only iPad does), so the in-page fullscreen request is
+a silent no-op and you keep the address bar on the device with the least screen
+to spare. An installed copy runs genuinely fullscreen and starts on the mobile
+preset. Android Chrome supports both, but installing is still nicer.
+
+**Useful URL parameters**
+
+| | |
+|---|---|
+| `?quality=mobile` | force the phone preset (also `low\|medium\|high\|ultra`) |
+| `?touch=1` | show the touch controls on a desktop, for testing |
+| `?touch=0` | hide them on a touch device |
+
+**What to expect.** The world is generated at load — hydraulic erosion, A* road
+routing, 35 baked PBR materials — so first paint takes a while and the boot
+screen is showing real progress, not a fake bar. Turn the volume up: the engine,
+the rain and the rifle are all synthesised and there is no music to hide behind.
+
+## How it decides you are on a phone
+
 Detection is a media query, not a user-agent sniff: coarse pointer plus no hover. The
 mobile preset renders at `pixelRatio 0.62` and turns the cloud raymarch off, which
 together are worth more than everything else in the block — a phone GPU's bottleneck is

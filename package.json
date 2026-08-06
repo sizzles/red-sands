@@ -4,8 +4,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host 0.0.0.0",
+
     "build": "vite build",
     "preview": "vite preview",
+    "preview:lan": "vite preview --host 0.0.0.0",
     "capture": "node tools/capture.mjs --out shots/latest --w 1920 --h 1080",
     "capture:fast": "node tools/capture.mjs --fast --out shots/latest",
     "smoke": "node tools/capture.mjs --smoke --fast --out shots/latest",
