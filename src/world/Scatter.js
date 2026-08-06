@@ -16,6 +16,7 @@ import { Bedding } from './scatter/Bedding.js';
 import { ScatterCollision } from './scatter/Collision.js';
 import { planHeroes, emitHeroFormation } from './scatter/Heroes.js';
 import { ZONE, logSize } from './vegetation/Ecology.js';
+import { regionAt } from './terrain/Field.js';
 
 /**
  * ============================================================================
@@ -80,6 +81,22 @@ const ROCK_TINTS = [
   [0.90, 0.91, 0.92], // cold slate
   [1.08, 1.02, 0.84], // bleached ochre
   [0.95, 0.90, 0.81], // shale
+];
+
+/* The lava beds are not desert stone with the contrast turned down — they are a
+   different rock, and the palette above cannot reach them from any entry. Fresh
+   basalt is a 0.06-0.09 linear reflector against desert stone's ~0.20, and what
+   breaks the black is ash and lichen rather than iron oxide, so there is no red
+   in it at all. Placement already puts ordinary boulders, stones and outcrops on
+   the flows (they belong there — a flow field is strewn with its own rubble),
+   and with one shared palette they came out as pale tan cobbles lying on a
+   near-black ground. That combination does not occur anywhere in nature, and it
+   was the single most conspicuous thing in the lava-bed shot. */
+const BASALT_TINTS = [
+  [0.34, 0.34, 0.36], // fresh flow, faintly blue in the shadow
+  [0.42, 0.41, 0.39], // weathered surface, ash-dusted
+  [0.29, 0.30, 0.32], // glassy pahoehoe, the darkest of them
+  [0.47, 0.46, 0.42], // old flow, lichen taking hold
 ];
 
 const FOLIAGE_TINTS = [
@@ -1382,7 +1399,7 @@ export class Scatter {
     const gh = this.ctx.world.getHeight;
     const probe = this._probe;
     const r = streamRng((this.seed ^ 0x1d7f3c) >>> 0);
-    const tint = this._tintFor(c.x, c.z, ROCK_TINTS, 3);
+    const tint = this._tintFor(c.x, c.z, this._rockPal(c.x, c.z), 3);
     const wood = [1.06, 0.98, 0.88];
 
     const put = (kind, variant, px, pz, s, align, sink, tnt, sy, sz, bedR = 0, bedK = 1) => {
@@ -1446,6 +1463,24 @@ export class Scatter {
       0.52 + r() * 0.22, 0.9, 0.07, wood, 0.62, 0.62, 1.8, 0.9);
     put('stump', 0, c.x + Math.cos(sa + 1.1) * 3.4, c.z + Math.sin(sa + 1.1) * 3.4,
       0.75 + r() * 0.4, 0.7, 0.10, wood, null, null, 0.9, 0.95);
+  }
+
+  /**
+   * Which rock this is, geologically, at a world position.
+   *
+   * Cached on the 190 m tint cell rather than evaluated per instance: `regionAt`
+   * costs two domain-warp fbms plus the cone and crest lookups, and placement
+   * walks its lattice in scan order, so a one-entry cache catches nearly every
+   * call. It also keeps the answer constant across a cluster, which is what
+   * makes a flow field read as one flow rather than as a chequerboard.
+   */
+  _rockPal(x, z) {
+    const cx = Math.floor(x / 190), cz = Math.floor(z / 190);
+    if (cx !== this._palCX || cz !== this._palCZ) {
+      this._palCX = cx; this._palCZ = cz;
+      this._palBasalt = regionAt(cx * 190 + 95, cz * 190 + 95).bad > 0.42;
+    }
+    return this._palBasalt ? BASALT_TINTS : ROCK_TINTS;
   }
 
   _tintFor(x, z, palette, salt) {
@@ -1592,7 +1627,7 @@ export class Scatter {
         if (probe.water || probe.slope < 0.46) continue;
         const dist = Math.sqrt(d2);
         const rnd = streamRng(((h * 4294967296) | 0) ^ 0x77a1);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         const nrm = { x: probe.nx, y: probe.ny, z: probe.nz };
         /* 12 m to 36 m, tail 1.35. Pass 10 drew 10-38 with a tail of 1.5, which
            in practice put most "landmarks" at 11-13 m — lost in the scrub at
@@ -1669,7 +1704,7 @@ export class Scatter {
       const dx = site.x - ox, dz = site.z - oz;
       const d2 = dx * dx + dz * dz;
       if (d2 > R2) continue;
-      emitHeroFormation(this, site, Math.sqrt(d2), ROCK_TINTS);
+      emitHeroFormation(this, site, Math.sqrt(d2), this._rockPal(site.x, site.z));
     }
   }
 
@@ -1717,7 +1752,7 @@ export class Scatter {
         if (probe.water || probe.slope < 0.55) continue;
         const dist = Math.sqrt(d2);
         const rnd = streamRng(((h * 4294967296) | 0) ^ 0x3f19);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         const nrm = { x: probe.nx, y: probe.ny, z: probe.nz };
         /* deliberately biased LARGE — this tier exists to be big */
         const base = 2.4 + logSize(rnd(), 0.6, 5.4, 1.35);
@@ -1998,7 +2033,7 @@ export class Scatter {
            outline." */
         if (this.bedding) this.bedding.add(mx, mz, seg * 0.42, dist, 0.85);
         const rub = 4 + ((r() * 5) | 0);
-        const rtint = this._tintFor(a.x, a.z, ROCK_TINTS, 3);
+        const rtint = this._tintFor(a.x, a.z, this._rockPal(a.x, a.z), 3);
         for (let k = 0; k < rub; k++) {
           const t = r();
           const side = (r() - 0.5) * 2.2;
@@ -2027,7 +2062,7 @@ export class Scatter {
 
     switch (kindHint) {
       case 'rock': {
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         const zn = this._zone(x, z);
         const bigCountry = zn === ZONE.SCREE || zn === ZONE.OUTCROP;
         /* SIZE HIERARCHY. `sizeDist(u, lo, hi, 1.55)` is very nearly uniform
@@ -2069,7 +2104,7 @@ export class Scatter {
       case 'outcrop': {
         const variant = (rnd() * 7) | 0;
         const s = logSize(rnd(), 1.9, 23.0, 2.5);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         this._emit('outcrop', variant, x, p.y, z, s,
           rnd() * Math.PI * 2, rnd() * 0.10, n, 0.55,
           s * (0.26 + rnd() * 0.22), tint, dist,
@@ -2092,7 +2127,7 @@ export class Scatter {
       case 'stone': {
         const variant = (rnd() * 2) | 0;
         const s = logSize(rnd(), 0.05, 1.05, 2.7);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         this._emit('stone', variant, x, p.y, z, s,
           rnd() * Math.PI * 2, rnd() * 0.3, n, 0.8,
           s * (0.32 + rnd() * 0.3), tint, dist,

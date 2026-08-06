@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
-import { buildRiven, patchRivenAnim } from './riven/RivenBody.js';
+import { buildRiven, patchRivenAnim, varyInstanceColour } from './riven/RivenBody.js';
 
 /**
  * BROKEN ROAD — THE RIVEN
@@ -136,9 +136,16 @@ export class Riven {
       const count = Math.max(2, Math.round(total * def.share));
       const geo = buildRiven(name, this.rand);
 
+      /* `vertexColors` is what carries the anatomy: RivenBody bakes joint
+         shadow, necrotic mottling and dark cloth into the mesh as ratios around
+         1.0, and three.js multiplies them in with no shader work of ours. The
+         material colour stays the SPECIES colour and the per-instance colour
+         set below is the INDIVIDUAL, so the three layers compose without any
+         one of them having to know about the others. */
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(def.colour[0], def.colour[1], def.colour[2]),
         roughness: 0.92, metalness: 0, fog: false, dithering: true,
+        vertexColors: true,
       });
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.BasicDepthPacking });
       depth.userData.rsNoAerial = true;
@@ -153,6 +160,10 @@ export class Riven {
       mesh.castShadow = !!def.shadow;
       mesh.receiveShadow = true;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      /* A pack of eight identical clones was the other half of why these read
+         as placeholders. Narrow on purpose — different people in different
+         light, not a bag of sweets. */
+      varyInstanceColour(mesh, this.rand, 0.34);
 
       const anim = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
       anim.setUsage(THREE.DynamicDrawUsage);

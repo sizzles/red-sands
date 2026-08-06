@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
-import { buildCordon, patchCordonAnim, buildRoadblock } from './cordon/CordonBody.js';
+import { buildCordon, patchCordonAnim, buildRoadblock, varyInstanceColour }
+  from './cordon/CordonBody.js';
 
 /**
  * BROKEN ROAD — THE CORDON
@@ -106,9 +107,13 @@ export class Cordon {
       const count = Math.max(2, Math.round(total * def.share));
       const geo = buildCordon(name, this.rand);
 
+      /* See Riven.js — same three-layer split. Here the baked layer is
+         uniform, webbing, helmet shell and exposed skin at the collar, which is
+         what stops a soldier being one flat drab silhouette. */
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(def.colour[0], def.colour[1], def.colour[2]),
         roughness: 0.88, metalness: 0.04, fog: false, dithering: true,
+        vertexColors: true,
       });
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.BasicDepthPacking });
       depth.userData.rsNoAerial = true;
@@ -249,12 +254,18 @@ export class Cordon {
         color: new THREE.Color(0.30, 0.30, 0.28), roughness: 0.94,
       })
       : new THREE.MeshStandardMaterial({ color: 0x4a4a46, roughness: 0.94 });
-    this.blockMat = mat;
+    /* Cloned before switching vertex colours on: `procTextures.material` can
+       hand back a SHARED instance, and flipping the flag in place would change
+       every other object built from the same stone. The roadblock's concrete
+       and steel tones are baked per box in CordonBody. */
+    const blockMat = mat.clone();
+    blockMat.vertexColors = true;
+    this.blockMat = blockMat;
 
     const sited = this._posts.filter((p) => !p.noBlock);
     if (!sited.length) return;
     const geo = buildRoadblock(this.rand);
-    const mesh = new THREE.InstancedMesh(geo, mat, sited.length);
+    const mesh = new THREE.InstancedMesh(geo, blockMat, sited.length);
     mesh.name = 'cordon:roadblock';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
