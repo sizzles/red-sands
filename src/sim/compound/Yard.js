@@ -58,7 +58,7 @@ export const YARD = { halfX: 26, halfZ: 20, wallH: 5.4, gateW: 9.0 };
 const FOOT = 4.2;
 
 const BAY = 4.2;          // metres between wall buttresses
-const CONC = [0.70, 0.69, 0.66];
+const CONC = [0.60, 0.59, 0.57];      // the recessed wall behind everything
 
 /**
  * One run of perimeter wall, from local (x0,z0) to (x1,z1).
@@ -88,13 +88,61 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
    * the buttresses and the gabions be written once instead of four times.
    */
   const W = F.sub(x0, z0, 0, Math.atan2(dz, dx));
+  /* Tones are separated harder than the material would separate them. Under an
+     overcast sky nothing casts a shadow, so the only thing left distinguishing
+     a proud panel from the wall behind it is its value — and at 4% apart they
+     were indistinguishable. Recess dark, proud light, cap lightest. */
   const face = { us: IUV.block.us, vs: IUV.block.vs, wear, col: o.col || CONC };
 
   /* plinth: poured, proud, and the line the dirt splash breaks against */
   B.box(M.concrete, W, -0.05, run + 0.05, -t * 0.5 - 0.07, t * 0.5 + 0.07, -FOOT, 0.46,
     { us: IUV.concrete.us, vs: 0.5, wear, col: [0.62, 0.61, 0.58], nv: 1 });
-  /* the curtain */
-  B.box(M.concrete, W, 0, run, -t * 0.5, t * 0.5, 0.46, H, face);
+  /*
+   * THE CURTAIN, punched with an EMBRASURE per bay.
+   *
+   * This is the element that does the most work per triangle on the whole
+   * position, and it took two renders to see why. Buttresses and panel fields
+   * only exist on screen as the shadows they cast, so at a frontal sun — or
+   * under the overcast this valley spends half its life in — the wall goes back
+   * to being a flat band however deep the relief is. A hole does not have that
+   * problem. A recess is dark from every angle in every weather, and a rhythm
+   * of dark slots along a wall says "men stand behind this and shoot through
+   * it" in one shape, which is also the only thing that explains the fighting
+   * step on the other side.
+   *
+   * Blind pockets rather than a hole right through: from outside they are
+   * indistinguishable, and it avoids punching the inner face, its reveals and
+   * the sightline problems that come with an actual opening.
+   */
+  const emb = [];
+  const ew = 0.62, eh = 0.52, ey = H - 2.10;
+  for (let i = 0; i < n; i++) {
+    const cx = (i + 0.5) * bw;
+    if (cx < 0.9 || cx > run - 0.9) continue;
+    emb.push({ x0: cx - ew * 0.5, x1: cx + ew * 0.5, y0: ey, y1: ey + eh });
+  }
+  B.wallHoles(M.concrete, W, -t * 0.5, 0, run, 0.46, H, -1, emb, face);
+  B.faceZ(M.concrete, W, t * 0.5, 0, run, 0.46, H, +1, face);
+  B.faceX(M.concrete, W, 0, -t * 0.5, t * 0.5, 0.46, H, -1, face);
+  B.faceX(M.concrete, W, run, -t * 0.5, t * 0.5, 0.46, H, +1, face);
+  B.faceY(M.concrete, W, H, 0, run, -t * 0.5, t * 0.5, +1, face);
+  {
+    const zin = -t * 0.5 + 0.36;
+    const rev = { us: IUV.concrete.us, vs: IUV.concrete.vs, wear, col: [0.50, 0.49, 0.47], nu: 1, nv: 1 };
+    const blk = { us: 1, vs: 1, wear, col: [0.055, 0.050, 0.045], nu: 1, nv: 1 };
+    for (const e of emb) {
+      B.faceX(M.concrete, W, e.x0, -t * 0.5, zin, e.y0, e.y1, +1, rev);
+      B.faceX(M.concrete, W, e.x1, -t * 0.5, zin, e.y0, e.y1, -1, rev);
+      B.faceY(M.concrete, W, e.y1, e.x0, e.x1, -t * 0.5, zin, -1, rev);
+      B.faceY(M.concrete, W, e.y0, e.x0, e.x1, -t * 0.5, zin, +1, rev);
+      B.faceZ(M.concrete, W, zin, e.x0, e.x1, e.y0, e.y1, -1, blk);
+      /* a splayed cill under each loop, throwing water and a shadow clear of
+         the wall — and giving the slot a bright edge to be dark against */
+      B.box(M.concrete, W, e.x0 - 0.13, e.x1 + 0.13, -t * 0.5 - 0.16, -t * 0.5 + 0.01,
+        e.y0 - 0.14, e.y0 + 0.01,
+        { us: IUV.concrete.us, vs: 0.3, wear, col: [0.86, 0.85, 0.80], nu: 1, nv: 1 });
+    }
+  }
 
   /*
    * RELIEF, and the first build did not have enough of it.
@@ -115,7 +163,7 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
    *               one horizontal to read its own height against.
    */
   const bd = 0.55, bwid = 0.85;
-  const bc = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 1.06, CONC[1] * 1.05, CONC[2] * 1.02], nu: 1 };
+  const bc = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 1.34, CONC[1] * 1.33, CONC[2] * 1.30], nu: 1 };
   for (let i = 0; i <= n; i++) {
     const x = Math.min(run - bwid, Math.max(0, i * bw - bwid * 0.5));
     B.box(M.concrete, W, x, x + bwid, -t * 0.5 - bd, -t * 0.5 + 0.01, 0.20, H - 0.30, bc);
@@ -124,7 +172,7 @@ function wallRun(B, F, M, x0, z0, x1, z1, o) {
     B.box(M.concrete, W, x, x + bwid, -t * 0.5 - bd * 0.45, -t * 0.5 + 0.01, H - 0.30, H - 0.02, bc);
   }
   /* proud panel per bay */
-  const pnl = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 0.96, CONC[1] * 0.96, CONC[2] * 0.97] };
+  const pnl = { us: IUV.block.us, vs: IUV.block.vs, wear, col: [CONC[0] * 1.16, CONC[1] * 1.15, CONC[2] * 1.14] };
   for (let i = 0; i < n; i++) {
     const x0p = i * bw + bwid * 0.5 + 0.22;
     const x1p = (i + 1) * bw - bwid * 0.5 - 0.22;
