@@ -155,13 +155,36 @@ export function buildRiven(kind, r) {
 
   /* Head, dropped forward and down off the shoulders, with a hanging jaw. The
      jaw is the only bright shape on the model and it is where the eye goes. */
-  /* Neck: long on the keener, and the skull runs UP from it instead of
-     forward and down, which is the head-thrown-back read. */
-  const neck = keener ? 0.30 : (harrow ? 0.06 : 0.11);
+  /*
+   * Neck length, and on the cairn it is load-bearing for the DESIGN rather than
+   * for the look.
+   *
+   * The cairn's whole mechanic is that a player can see where the armour stops:
+   * plate on the chest and shoulders, nothing on the head, so the two answers
+   * — flank it, or take the head — are both readable off the silhouette. It
+   * inherited the harrow's 60 mm neck and forward-dropped skull, and the
+   * shoulder plates then swamped the head completely. Photographed from the
+   * front there was no head at all, and from behind it sat down between the
+   * shoulder blades: the model was saying "armour everywhere", which teaches
+   * exactly the wrong lesson.
+   *
+   * So the cairn carries its head HIGH and only slightly forward, clear of the
+   * shoulder line from every angle. Proportion rather than detail, because
+   * proportion is what survives to the distance these are identified at.
+   */
+  /* The harrow's 60 mm neck was a pre-existing defect of the same kind: its
+     head topped out at EXACTLY the shoulder line, so it had no head in its
+     silhouette either. That matters on a harrow specifically, because a head
+     shot does six times body damage and the player has to be able to see what
+     they are aiming at. 210 mm puts 14 cm of skull proud of the shoulders, which is about
+     what a stray shows relative to its own size. */
+  const neck = plated ? 0.28 : (keener ? 0.30 : (harrow ? 0.21 : 0.11));
   const skullA = V(lean + 0.02, shoY + neck, 0);
   const skullB = keener
     ? V(lean - 0.10, shoY + neck + 0.22, 0)
-    : V(lean + (harrow ? 0.20 : 0.17), shoY + neck * (harrow ? 0.4 : 0.7), 0);
+    : (plated
+      ? V(lean + 0.19, shoY + neck * 0.86, 0)
+      : V(lean + (harrow ? 0.20 : 0.17), shoY + neck * (harrow ? 0.4 : 0.7), 0));
   b.box(skullA, skullB,
     harrow ? 0.115 : 0.090, harrow ? 0.110 : 0.088,
     harrow ? 0.085 : 0.062, harrow ? 0.090 : 0.070,
