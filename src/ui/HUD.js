@@ -3,6 +3,7 @@ import { Regions, timePhrase } from './Regions.js';
 import { PauseMenu } from './PauseMenu.js';
 import { MOUNT_RANGE } from '../player/Bike.js';
 import { TRACKS, TRACK_KEYS } from '../sim/Garage.js';
+import { GUN_TRACKS, GUN_KEYS } from '../sim/Gunsmith.js';
 
 /**
  * ============================================================================
@@ -78,6 +79,7 @@ export class HUD {
       ride: 0, threat: 0,
       /** The workbench panel. */
       garage: 0,
+      gunsmith: 0,
       /** The objective line, once the compound has been seen. */
       goal: 0,
     };
@@ -351,6 +353,7 @@ export class HUD {
     const CD = ctx.get('cordon');
     this._engaged = CD ? (CD.engaged || 0) : 0;
     this._garage = ctx.get('garage');
+    this._gunsmith = ctx.get('gunsmith');
     const CP = ctx.get('compound');
     this._goal = CP && CP.status ? CP.status() : null;
     this._threatHold = (this._hunting > 0 || this._engaged > 0)
@@ -427,6 +430,7 @@ export class HUD {
        */
       threat: (!paused && this._threatHold > 0) ? 1 : 0,
       garage: (!paused && this._garage && this._garage.open) ? 1 : 0,
+      gunsmith: (!paused && this._gunsmith && this._gunsmith.open) ? 1 : 0,
       goal: (!paused && this._goal && this._goal.seen && !this._goal.escaped
         && this._goal.distance < 700) ? 1 : 0,
     };
@@ -434,7 +438,8 @@ export class HUD {
       compass: [3.6, 1.1], cores: [4.5, 0.9], prompt: [7, 3], title: [1, 1],
       hint: [1.2, 3], notice: [6, 2], keys: [1.6, 0.8], lock: [1.8, 1.6],
       weapon: [8, 1.6], reticle: [12, 9], wanted: [5, 1.0], skin: [9, 5],
-      ride: [5, 1.4], threat: [9, 0.8], garage: [11, 9], goal: [3, 1.2],
+      ride: [5, 1.4], threat: [9, 0.8], garage: [11, 9], gunsmith: [11, 9],
+      goal: [3, 1.2],
     };
     for (const k in this.a) {
       const t = target[k];
@@ -595,6 +600,7 @@ export class HUD {
     if (this.a.threat > 0.004) this._drawThreat(c, W, H, s, this.a.threat * G);
     if (this.a.goal > 0.004) this._drawGoal(c, W, H, s, this.a.goal * G);
     if (this.a.garage > 0.004) this._drawGarage(c, W, H, s, this.a.garage * G);
+    if (this.a.gunsmith > 0.004) this._drawGunsmith(c, W, H, s, this.a.gunsmith * G);
     if (this.a.title > 0.004) this._drawTitle(c, W, H, s, this.a.title * G);
     /* The three centred lines are a stack, not three fixed positions. Each one
      * that draws pushes the ceiling up for the next, so when the control hints
@@ -1411,18 +1417,37 @@ export class HUD {
   _drawGarage(c, W, H, s, A) {
     const G = this._garage;
     if (!G) return;
+    this._drawBench(c, W, H, s, A, G, TRACK_KEYS, TRACKS, 'THE BIKE');
+  }
+
+  _drawGunsmith(c, W, H, s, A) {
+    const G = this.ctx.get('gunsmith');
+    if (!G) return;
+    this._drawBench(c, W, H, s, A, G, GUN_KEYS, GUN_TRACKS, 'THE RIFLE');
+  }
+
+  /**
+   * One workbench panel, drawn twice.
+   *
+   * The bike bench and the vice are the same interaction with a different track
+   * table, so they are the same panel with a different title. Duplicating sixty
+   * lines of layout would have guaranteed the two drifted apart the first time
+   * either was touched, and the player would have had to learn two panels that
+   * do exactly the same thing.
+   */
+  _drawBench(c, W, H, s, A, G, KEYS, TABLE, title) {
     const loot = this.ctx.get('loot');
     const scrap = loot ? (loot.inventory.scrap || 0) : 0;
 
     const rowH = 30 * s;
     const panelW = Math.min(W * 0.72, 460 * s);
-    const panelH = rowH * TRACK_KEYS.length + 74 * s;
+    const panelH = rowH * KEYS.length + 74 * s;
     const x0 = (W - panelW) * 0.5;
     const y0 = (H - panelH) * 0.5;
 
     this._shade(c, W * 0.5, H * 0.5, panelW * 0.62, panelH * 0.62, 0.52 * A);
 
-    this._text(c, 'THE BIKE', W * 0.5, y0 + 24 * s, {
+    this._text(c, title, W * 0.5, y0 + 24 * s, {
       size: 15 * s, colour: INK, alpha: 0.92 * A, align: 'center', track: 0.34,
     });
     this._text(c, `${scrap} SCRAP`, W * 0.5, y0 + 41 * s, {
@@ -1431,9 +1456,9 @@ export class HUD {
     this._hairline(c, x0 + 18 * s, y0 + 50 * s, x0 + panelW - 18 * s, y0 + 50 * s,
       INK_DIM, 0.22 * A, Math.max(1, 1.2 * s));
 
-    for (let i = 0; i < TRACK_KEYS.length; i++) {
-      const k = TRACK_KEYS[i];
-      const T = TRACKS[k];
+    for (let i = 0; i < KEYS.length; i++) {
+      const k = KEYS[i];
+      const T = TABLE[k];
       const lvl = G.levels[k] || 0;
       const cost = G.costOf(k);
       const y = y0 + 70 * s + i * rowH;

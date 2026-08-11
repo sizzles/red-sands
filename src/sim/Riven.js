@@ -212,7 +212,10 @@ export class Riven {
      */
     ctx.on('gunshot', (e) => {
       const p = (e && e.position) || ctx.player.position;
-      this.alarm(p, 220, 1);
+      /* HONOUR `loudness`. It was ignored here, which meant the gunsmith's
+         baffled barrel quietened the shot for the townsfolk and for nothing
+         that wanted to eat you — the only audience that matters. */
+      this.alarm(p, 220 * ((e && e.loudness) || 1), 1);
     });
     /* Kicking the engine over is nearly as bad. */
     ctx.on('bikeStart', (e) => {

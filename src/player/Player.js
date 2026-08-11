@@ -559,6 +559,16 @@ export class Player {
         this._actionClaimed = this.ctx.time.frame;
         return;
       }
+      /* The vice ranks with the trestle. They are never within 120 m of each
+         other (see Gunsmith._siteBenches) so the two can never both be in
+         range, and the order between them is therefore arbitrary rather than a
+         priority anyone has to learn. */
+      const gunsmith = this.ctx.get('gunsmith');
+      if (gunsmith && gunsmith.nearest && gunsmith.nearest()) {
+        if (gunsmith.open) gunsmith.close(); else gunsmith.openPanel();
+        this._actionClaimed = this.ctx.time.frame;
+        return;
+      }
       const roads = this.ctx.get('roads');
       const pump = roads && roads.nearestStation ? roads.nearestStation() : null;
       if (pump) {
@@ -646,7 +656,8 @@ export class Player {
     /* The panel is a menu: nothing moves while it is up, and the number keys
        that buy upgrades must not also drive. */
     const _garage = this.ctx.get('garage');
-    if (_garage && _garage.open) {
+    const _gun = this.ctx.get('gunsmith');
+    if ((_garage && _garage.open) || (_gun && _gun.open)) {
       const i = this.input;
       i.f = 0; i.r = 0; i.sprint = false; i.jump = false; i.crouch = false;
       this.state.velocity.set(0, 0, 0);

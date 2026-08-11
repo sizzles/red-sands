@@ -93,6 +93,8 @@ export class Loot {
     this.rand = rng((ctx.seed ^ 0x1d7f04c9) >>> 0);
     /** The player's pack. Read by HUD, Bike (fuel) and Weapon (ammo). */
     this.inventory = { fuel: 1, ammo: 24, scrap: 3, meds: 1 };
+    /** Rounds fired since the last salvage. Feeds the gunsmith's kit. */
+    this._spentTotal = 0;
     this.stashes = [];
     this._near = null;
     this._ready = false;
@@ -329,7 +331,11 @@ export class Loot {
       return;
     }
     const spent = this._lastReserve - wp.reserve;
-    if (spent > 0) this.take('ammo', Math.min(spent, this.inventory.ammo));
+    if (spent > 0) {
+      this.take('ammo', Math.min(spent, this.inventory.ammo));
+      /* Running tally of brass on the ground, for the salvage track above. */
+      this._spentTotal = (this._spentTotal || 0) + spent;
+    }
     wp.reserve = this.inventory.ammo;
     this._lastReserve = wp.reserve;
   }
@@ -346,6 +352,22 @@ export class Loot {
   collect(stash) {
     const st = stash || this._near;
     if (!st || st.taken) return null;
+    /*
+     * SALVAGE. The gunsmith's reloading kit turns a stash into slightly more
+     * brass than it held, scaled by how much you have actually FIRED — it is a
+     * fraction of your spent rounds, not a flat bonus, so it bends the
+     * depletion curve without flattening it. A player who has not shot anything
+     * gets nothing back, which is the property that keeps it honest.
+     */
+    const GS = this.ctx.get('gunsmith');
+    const sal = GS ? GS.mult('salvage') : 0;
+    if (sal > 0 && this._spentTotal > 0) {
+      const back = Math.floor(this._spentTotal * sal);
+      if (back > 0) {
+        st.contents.ammo = (st.contents.ammo | 0) + back;
+        this._spentTotal -= Math.round(back / sal);
+      }
+    }
     const gained = {};
     for (const k in st.contents) {
       const n = st.contents[k] | 0;

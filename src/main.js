@@ -22,6 +22,7 @@ import { Wildlife } from './sim/Wildlife.js';
 import { Riven } from './sim/Riven.js';
 import { Cordon } from './sim/Cordon.js';
 import { Garage } from './sim/Garage.js';
+import { Gunsmith } from './sim/Gunsmith.js';
 import { Compound } from './sim/Compound.js';
 import { CompoundSite } from './sim/CompoundSite.js';
 import { Loot } from './sim/Loot.js';
@@ -56,6 +57,7 @@ const S = [
   [new Cordon(ctx),      87],
   [new Loot(ctx),        88],
   [new Garage(ctx),      89],
+  [new Gunsmith(ctx),    90],
   [new CompoundSite(ctx), 36],
   [new Compound(ctx),    91],
   [new CameraRig(ctx),   90],
@@ -92,6 +94,7 @@ const LABELS = {
   bike: 'kicking it over', wildlife: 'releasing the herds',
   riven: 'listening for the horde', cordon: 'manning the checkpoints',
   loot: 'hiding the caches', garage: 'laying out the tools',
+  gunsmith: 'oiling the rifle',
   compoundSite: 'closing the pass', compound: 'walling the pass',
   camera: 'framing the shot', postfx: 'grading the film',
   audio: 'tuning the wind', hud: 'final touches', touch: 'final touches', ready: 'ready',
