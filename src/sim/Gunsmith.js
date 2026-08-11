@@ -108,9 +108,19 @@ export class Gunsmith {
    *
    * DELIBERATELY NOT WHERE THE BIKE BENCHES ARE. Two workbenches in one place
    * is one stop, and one stop is a menu; two places you have to choose between
-   * is a map. The town gets one because the town is where people were, and
-   * three more go out on the ring — far enough apart that having scrap and
-   * having somewhere to spend it are separate problems.
+   * is a map.
+   *
+   * The ring benches enforce 120 m. THE TOWN ONE CANNOT — the settlement is
+   * only about 130 m across, so 120 would push it out of the town entirely and
+   * a new player would never find a vice at all. What it does instead is site
+   * itself diametrically opposite whatever corner the garage took, which is the
+   * most separation the settlement has to give: about 55 m, a walk down the
+   * street rather than a different journey. That is a real compromise and it is
+   * worth naming rather than pretending the number is uniform.
+   *
+   * (The first cut hard-coded an offset and landed 17 m from the bike bench,
+   * which is the exact failure this comment claims to prevent. It was caught by
+   * a boot probe measuring the distance, not by looking at it.)
    */
   _siteBenches() {
     const ctx = this.ctx;
@@ -137,8 +147,18 @@ export class Gunsmith {
     const town = ctx.poi.get('town');
     if (town) {
       const p = town.pos || town;
-      /* far side of the settlement from the garage's corner */
-      put(p.x - 9, p.z - 5, 'town');
+      /* Opposite the garage's corner, as far out as the settlement allows.
+         Garage sites on the same `ready` event and inits first, so its benches
+         are already placed by the time this runs. */
+      let ox = -34, oz = -22;
+      const gTown = (garage && garage.benches)
+        ? garage.benches.find((b) => b.name === 'town') : null;
+      if (gTown) {
+        const dx = gTown.pos.x - p.x, dz = gTown.pos.z - p.z;
+        const l = Math.hypot(dx, dz) || 1;
+        ox = (-dx / l) * 48; oz = (-dz / l) * 48;
+      }
+      put(p.x + ox, p.z + oz, 'town');
     }
 
     const half = (world.size || 8192) * 0.5;
