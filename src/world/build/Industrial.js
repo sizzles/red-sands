@@ -381,9 +381,14 @@ export function buildBlockhouse(B, F, M, spec, rand) {
         for (let y = g + 0.30; y < g + h + 0.7; y += 0.30) {
           B.tube(M.rust, F.p(lx, lz - 0.22, y), F.p(lx, lz + 0.22, y), 0.018, 0.018, 4, rc);
         }
-        B.solid({ x: F.p(lx, lz, 0)[0], y: F.oy + g + h * 0.5, z: F.p(lx, lz, 0)[2],
-          hx: 0.12, hy: h * 0.5, hz: 0.30, ax: F.ax, az: F.az, tag: 'ladder' });
-        B.link(spec.from, spec.node, 'ladder');
+        const lp = F.p(lx, lz, 0);
+        const tp = F.p(w * 0.5, d * 0.5, 0);
+        B.ladder({
+          x: lp[0], z: lp[2], nx: F.ax, nz: F.az,
+          y0: F.oy + g, y1: F.oy + g + h + 0.35,
+          top: { x: tp[0], y: F.oy + g + h + 0.18, z: tp[2] },
+          tag: 'roof', from: spec.from, to: spec.node,
+        });
       }
     }
   }
@@ -478,6 +483,19 @@ export function guardTower(B, F, M, s) {
   /* a caged ladder up one leg */
   if (s.ladder !== false) {
     const lx = -r, lz = r + 0.10;
+    /* R3: the climbable volume, right where the rungs are. Its top is just over
+       the deck lip and it lands you INBOARD, because arriving on the edge of a
+       fifteen-metre tower is not a mechanic. */
+    if (s.node) {
+      const lp = F.p(lx, lz, 0);
+      const tp = F.p(lx + 0.85, lz - 1.15, 0);
+      B.ladder({
+        x: lp[0], z: lp[2], nx: F.bx, nz: F.bz,
+        y0: F.oy + g, y1: F.oy + dy + 0.30,
+        top: { x: tp[0], y: F.oy + dy + 0.10, z: tp[2] },
+        tag: 'tower', from: s.from, to: s.node,
+      });
+    }
     B.tube(M.rust, F.p(lx - 0.22, lz, g), F.p(lx - 0.22, lz, dy + 0.9), 0.032, 0.032, 5, rc);
     B.tube(M.rust, F.p(lx + 0.22, lz, g), F.p(lx + 0.22, lz, dy + 0.9), 0.032, 0.032, 5, rc);
     for (let y = g + 0.30; y < dy + 0.6; y += 0.30) {
@@ -499,10 +517,9 @@ export function guardTower(B, F, M, s) {
      11 cm error here is 11 cm of standing on nothing. */
   B.solid({ x: wp[0], y: F.oy + dy + 0.05, z: wp[2],
     hx: dk, hy: 0.05, hz: dk, ax: F.ax, az: F.az, walkable: true, tag: 'tower_deck' });
-  if (s.node) {
-    B.node(s.node, { x: wp[0], y: F.oy + dy + 0.10, z: wp[2], kind: 'deck' });
-    if (s.from) B.link(s.from, s.node, 'ladder');
-  }
+  /* The node is declared here; the LINK is emitted by `B.ladder` below, so a
+     tower deck cannot appear in the graph without something to climb to it. */
+  if (s.node) B.node(s.node, { x: wp[0], y: F.oy + dy + 0.10, z: wp[2], kind: 'deck' });
   return { deckY: dy, lampY: dy + 1.5, lampZ: dk + 0.8 };
 }
 

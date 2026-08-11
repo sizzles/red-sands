@@ -205,6 +205,12 @@ export class Compound {
         }));
       }
     }
+    /* Climbable volumes. Registered from the same plan as the geometry, so a
+       ladder you can see is a ladder you can climb and vice versa. */
+    this.ladderVols = [];
+    if (P && P.addLadder) {
+      for (const l of (built.plan.ladders || [])) this.ladderVols.push(P.addLadder(l));
+    }
     /* R2: every level the compound builds must be reachable from the yard.
        Cheap enough to assert at runtime, and the one failure mode that looks
        completely correct in a render. */
@@ -429,5 +435,6 @@ export class Compound {
     if (this.mats) for (const m of this.mats.values()) m.dispose();
     const P = ctx.get('physics');
     if (P && P.removeCollider) for (const c of (this.solids || [])) P.removeCollider(c);
+    if (P && P.removeLadder) for (const l of (this.ladderVols || [])) P.removeLadder(l);
   }
 }

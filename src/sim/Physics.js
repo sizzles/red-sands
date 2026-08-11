@@ -21,6 +21,9 @@ import * as THREE from 'three';
  * ============================================================================
  */
 
+/** Metres per second up the rungs at a full push. A brisk but not comic climb. */
+const CLIMB_SPEED = 2.15;
+
 const GRAVITY = -9.81;
 const FIXED = 1 / 60;
 const MAX_SUB = 5;
@@ -237,6 +240,8 @@ export class Physics {
     this._stamp = 0;
     /** How many colliders are floors as well as walls. 0 = skip `deckAt`. */
     this._walkables = 0;
+    /** Climbable volumes. There are a handful in the world; a flat list is right. */
+    this.ladders = [];
     /** Rolling cost of the collider broad+narrow phase, ms per frame. */
     this.msColliders = 0;
     this._msAcc = 0;
@@ -358,6 +363,64 @@ export class Physics {
       best = top;
     }
     return best;
+  }
+
+  /**
+   * Register a climbable volume.
+   *
+   * A ladder is not a collider — it is a region in which the controller stops
+   * obeying gravity and starts obeying the rungs. Kept as its own population
+   * because there are five of them in this world and a broad phase for five
+   * things costs more than the scan it replaces.
+   *
+   * @param {object} d
+   *   x, z      the ladder's centreline in plan
+   *   nx, nz    unit vector pointing AWAY from the structure — the side you
+   *             approach and hang from
+   *   y0, y1    foot of the rungs, and the height at which you top out
+   *   top       {x, y, z} where you step off at the top: on the deck, inboard,
+   *             so nobody arrives standing on the lip
+   *   w, reach  half-width across the rungs, and how far out you can grab them
+   */
+  addLadder(d) {
+    const l = {
+      x: d.x, z: d.z,
+      nx: d.nx, nz: d.nz,
+      y0: d.y0, y1: d.y1,
+      top: d.top || { x: d.x, y: d.y1, z: d.z },
+      w: d.w != null ? d.w : 0.62,
+      reach: d.reach != null ? d.reach : 0.72,
+      tag: d.tag || '',
+    };
+    this.ladders.push(l);
+    return l;
+  }
+
+  removeLadder(l) {
+    const i = this.ladders.indexOf(l);
+    if (i >= 0) this.ladders.splice(i, 1);
+  }
+
+  /**
+   * The ladder a character at (x, y, z) moving (vx, vz) may take hold of.
+   *
+   * Requires them to be PUSHING INTO it, or already off the ground on it —
+   * otherwise walking past the foot of a ladder grabs it, and a ladder you
+   * cannot walk past is worse than no ladder at all.
+   */
+  ladderAt(x, y, z, vx, vz) {
+    for (let i = 0; i < this.ladders.length; i++) {
+      const l = this.ladders[i];
+      if (y < l.y0 - 0.7 || y > l.y1 + 0.25) continue;
+      const dx = x - l.x, dz = z - l.z;
+      const out = dx * l.nx + dz * l.nz;
+      if (out < -0.20 || out > l.reach) continue;
+      const lat = -dx * l.nz + dz * l.nx;
+      if (Math.abs(lat) > l.w) continue;
+      const into = -(vx * l.nx + vz * l.nz);
+      if (into > 0.35 || y > l.y0 + 0.45) return l;
+    }
+    return null;
   }
 
   removeCollider(c) {
@@ -660,6 +723,58 @@ export class Physics {
     /* Skip every deck query in a world that has no walkable colliders in it —
        which is this map, everywhere except the compound. */
     const deck = this._walkables > 0 && s.decks !== false;
+
+    /*
+     * ------------------------------------------------------------------ LADDERS
+     *
+     * A ladder is a region in which the controller stops obeying gravity and
+     * starts obeying the rungs. While `s.climb` is set this branch owns the
+     * character completely and returns before any of the walking code runs —
+     * there is no half state where you are both climbing and falling.
+     *
+     * CONTROL. Push toward the ladder to go up, pull away to come down. No new
+     * binding, which matters: the touch build has an analogue stick and four
+     * buttons, and a climb key would have to displace one of them. It also means
+     * the mechanic explains itself — the thing you do to reach a ladder is the
+     * thing that then climbs it.
+     *
+     * The rate is signed by how hard you are pushing rather than being a
+     * constant, so easing off stops you on the rungs instead of committing you
+     * to the full storey. Jump lets go.
+     */
+    if (s.climb) {
+      const L = s.climb;
+      /* hold the rungs: a hand's width off the plane, centred on the stiles */
+      const hx = L.x + L.nx * 0.30, hz = L.z + L.nz * 0.30;
+      const k = Math.min(1, h * 14);
+      p.x += (hx - p.x) * k;
+      p.z += (hz - p.z) * k;
+
+      const into = -(v.x * L.nx + v.z * L.nz);
+      const rate = (into > 0 ? 1 : -1) * Math.min(1, Math.abs(into) / 1.4) * CLIMB_SPEED;
+      p.y += rate * h;
+      s.grounded = true;              // so the player's input stays responsive
+      s.groundNormal.set(0, 1, 0);
+      s.climbRate = rate;
+
+      if (v.y > 1.0) {                // jumped: let go
+        s.climb = null; s.grounded = false;
+      } else if (p.y >= L.y1 - 0.05 && rate > 0) {
+        /* Top out ONTO the deck, not onto the lip. Arriving on the edge of a
+           15 m tower and immediately walking off it is not a mechanic. */
+        p.set(L.top.x, L.top.y + 0.02, L.top.z);
+        v.x *= 0.25; v.z *= 0.25; v.y = 0;
+        s.climb = null; s.grounded = true;
+      } else if (p.y <= L.y0 + 0.02) {
+        p.y = L.y0;
+        if (rate <= 0) { s.climb = null; s.grounded = true; v.y = 0; }
+      }
+      return s;
+    }
+    if (this.ladders.length) {
+      const L = this.ladderAt(p.x, p.y, p.z, v.x, v.z);
+      if (L) { s.climb = L; v.y = 0; s.climbRate = 0; return s; }
+    }
 
     if (!s.grounded) v.y += GRAVITY * h;
 

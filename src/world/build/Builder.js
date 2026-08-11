@@ -80,6 +80,8 @@ export class Builder {
     this.nodes = new Map();
     /** @type {Array<object>} the ways between them */
     this.links = [];
+    /** @type {Array<object>} climbable volumes, world space */
+    this.ladders = [];
   }
 
   /*
@@ -106,9 +108,11 @@ export class Builder {
    *       node().
    *   R2  EVERY NODE NEEDS AN EDGE. A node with no path back to the ground
    *       component is a BUILD ERROR, not a visual nit. `navCheck` is the test.
-   *   R3  EDGES ARE GEOMETRY. `stairRun` emits treads AND the link. You may not
-   *       declare a connection you did not build; that is the failure mode this
-   *       whole idea exists to prevent.
+   *   R3  EDGES ARE GEOMETRY, AND A MECHANIC. `stairRun` emits treads AND the
+   *       link; `ladder()` emits a climbable volume AND the link. You may not
+   *       declare a connection you did not build, and you may not build one the
+   *       controller has no way to use — the first draft of this kit did both,
+   *       and `navCheck` called the result fully connected.
    *   R4  SOLIDS FOLLOW THE SILHOUETTE, NOT THE DETAIL. One box per wall run,
    *       not one per buttress. Collision is about where you may stand, and a
    *       90 mm coping oversail is not a place.
@@ -143,6 +147,27 @@ export class Builder {
     return this;
   }
 
+  /**
+   * Register a climbable volume in WORLD space, and the link it carries.
+   *
+   * R3 in one call: you cannot get the graph edge without emitting something a
+   * character can actually climb, and the geometry is the caller's job right
+   * beside it. Before this existed the kit happily declared four ladder links
+   * to tower decks that no character in the game could reach, and `navCheck`
+   * reported the compound fully connected — which it was, on paper.
+   *
+   * @param {object} o { x, z, nx, nz, y0, y1, top:{x,y,z}, w, reach, from, to }
+   */
+  ladder(o) {
+    this.ladders.push({
+      x: o.x, z: o.z, nx: o.nx, nz: o.nz,
+      y0: o.y0, y1: o.y1, top: o.top,
+      w: o.w, reach: o.reach, tag: o.tag || '',
+    });
+    if (o.from && o.to) this.link(o.from, o.to, 'ladder');
+    return this;
+  }
+
   /** Declare a way between two levels. Both ids must exist by the end. */
   link(a, b, kind = 'stair') {
     this.links.push({ a, b, kind });
@@ -151,7 +176,10 @@ export class Builder {
 
   /** The collision + circulation half of the build. */
   plan() {
-    return { solids: this.solids, nodes: this.nodes, links: this.links };
+    return {
+      solids: this.solids, nodes: this.nodes, links: this.links,
+      ladders: this.ladders,
+    };
   }
 
   bucket(name) {
@@ -505,6 +533,7 @@ export class Builder {
     return {
       buckets: this.buckets.size, verts: v, tris: t,
       solids: this.solids.length, nodes: this.nodes.size, links: this.links.length,
+      ladders: this.ladders.length,
     };
   }
 }
