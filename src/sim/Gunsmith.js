@@ -128,9 +128,26 @@ export class Gunsmith {
     const roads = ctx.get('roads');
     const garage = ctx.get('garage');
     const R = this.rand;
+    /*
+     * SEAT ON THE LOWEST CORNER, NOT THE CENTRE.
+     *
+     * A bench is one rigid mesh about a metre and a half across. Placed at the
+     * height of its own centre it hangs off the downhill corner by however much
+     * the ground falls under it — measured at up to 0.90 m on one of these
+     * sites, which is a bench floating most of a metre in the air. Taking the
+     * minimum under the footprint instead buries the uphill legs, which is
+     * invisible, and the legs below run far enough down to cover it.
+     *
+     * The same mistake, and the same fix, as the compound's curtain wall.
+     */
     const put = (x, z, name) => {
+      let y = world.getHeight(x, z);
+      for (const [dx, dz] of [[-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5], [1.1, 0.7]]) {
+        const h = world.getHeight(x + dx, z + dz);
+        if (h < y) y = h;
+      }
       this.benches.push({
-        pos: new THREE.Vector3(x, world.getHeight(x, z), z),
+        pos: new THREE.Vector3(x, y, z),
         yaw: R() * Math.PI * 2, name,
       });
     };
@@ -207,7 +224,7 @@ export class Gunsmith {
     };
     box(1.7, 0.10, 0.70, 0, 0.88, 0);              // bench top
     for (const [x, z] of [[-0.75, -0.26], [0.75, -0.26], [-0.75, 0.26], [0.75, 0.26]]) {
-      box(0.10, 0.83, 0.10, x, 0.44, z);           // legs
+      box(0.10, 1.16, 0.10, x, 0.275, z);          // legs, buried 0.33
     }
     box(0.22, 0.26, 0.22, -0.58, 1.06, 0.02);      // the vice, jaws up
     box(0.30, 0.06, 0.10, -0.58, 1.22, 0.02);

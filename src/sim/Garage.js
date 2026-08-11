@@ -132,9 +132,26 @@ export class Garage {
     const world = ctx.world;
     const roads = ctx.get('roads');
     const R = this.rand;
+    /*
+     * SEAT ON THE LOWEST CORNER, NOT THE CENTRE.
+     *
+     * A bench is one rigid mesh about a metre and a half across. Placed at the
+     * height of its own centre it hangs off the downhill corner by however much
+     * the ground falls under it — measured at up to 0.90 m on one of these
+     * sites, which is a bench floating most of a metre in the air. Taking the
+     * minimum under the footprint instead buries the uphill legs, which is
+     * invisible, and the legs below run far enough down to cover it.
+     *
+     * The same mistake, and the same fix, as the compound's curtain wall.
+     */
     const put = (x, z, name) => {
+      let y = world.getHeight(x, z);
+      for (const [dx, dz] of [[-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5], [1.1, 0.7]]) {
+        const h = world.getHeight(x + dx, z + dz);
+        if (h < y) y = h;
+      }
       this.benches.push({
-        pos: new THREE.Vector3(x, world.getHeight(x, z), z),
+        pos: new THREE.Vector3(x, y, z),
         yaw: R() * Math.PI * 2, name,
       });
     };
@@ -191,7 +208,7 @@ export class Garage {
     };
     box(1.9, 0.09, 0.78, 0, 0.90, 0);            // bench top
     for (const [x, z] of [[-0.85, -0.30], [0.85, -0.30], [-0.85, 0.30], [0.85, 0.30]]) {
-      box(0.09, 0.86, 0.09, x, 0.45, z);         // legs
+      box(0.09, 1.21, 0.09, x, 0.275, z);        // legs, buried 0.35
     }
     box(0.70, 0.55, 0.42, -0.55, 0.28, 0.72);    // tool chest
     box(0.42, 0.86, 0.42, 1.35, 0.43, 0.15);     // oil drum
