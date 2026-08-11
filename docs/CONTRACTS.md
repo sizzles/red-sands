@@ -168,8 +168,35 @@ PH.removeBody(body);
 PH.raycast(origin, dir, maxDist, mask); // → hit | null
 PH.sphereCast(origin, dir, radius, maxDist);
 PH.step(dt);                        // fixed 1/60, called by its own update
+
+// --- built structure: things you can be stopped by and things you can stand on
+PH.addCollider({ shape, position, halfExtents, axis, mask, walkable, tag });
+PH.removeCollider(c);
+PH.deckAt(x, z, feetY, stepH, mask, fall);  // → highest walkable top, or -Infinity
+
+// --- ladders: regions where the controller obeys the rungs, not gravity
+PH.addLadder({ x, z, nx, nz, y0, y1, top, w, reach });
+PH.removeLadder(l);
+PH.ladderAt(x, y, z, vx, vz);       // → ladder | null
 ```
 Terrain collision is analytic against `ctx.world.getHeight`, not a mesh.
+
+**`walkable` is what makes a surface a floor and not only a wall.** A collider
+normally just pushes the capsule out in XZ; marking it walkable also makes its
+top count as ground, via `deckAt`, so wall walks, tower decks and roofs become
+places rather than scenery. Opt-in, because most solids must never be stood on —
+a boulder, a fence rail and a fuel drum are all colliders.
+
+Two rules the controller applies to walkable surfaces, both learned the hard way:
+a walkable top within `stepHeight` is a floor rather than a wall (or you can
+never climb onto it), and a walkable surface never blocks you from below (or a
+raised walkway sweeps anyone climbing toward it off whatever they are on).
+
+**Ladders are a population of their own**, not colliders: inside one, `s.climb`
+owns the character and the walking code does not run. Push toward the ladder to
+go up, pull away to come down, jump to let go. Structures emit them through
+`Builder.ladder()` so a ladder link in the circulation graph cannot exist
+without something climbable under it — see §4.5.1.
 
 ### 4.6 `particles`
 
