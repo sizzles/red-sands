@@ -176,15 +176,33 @@ export class Garage {
         yaw: R() * Math.PI * 2, name,
       });
     };
-    /** Nudge to the flattest spot within a few metres, for fixed placements. */
+    /**
+     * Nudge to the best spot within a few metres, for fixed placements.
+     *
+     * Scores flatness AND how far the height QUERY sits above the raw
+     * heightfield. That second term matters because `addHeightOverride` is
+     * query-side only: near the town's graded pad, `getHeight` can return made
+     * ground the terrain mesh does not draw, and a bench seated on it stands in
+     * the air. Inside the town proper that is fine — the town draws its own
+     * ground — but out at the pad's taper it is exactly the failure it looks
+     * like. Preferring natural ground keeps fixed benches off that edge.
+     */
+    const terrain = ctx.get('terrain');
+    const rawAt = (x, z) => (terrain && terrain._rawHeight
+      ? terrain._rawHeight(x, z) : world.getHeight(x, z));
     const settle = (x, z) => {
-      let best = { x, z, fall: foot(x, z).fall };
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2;
-        for (const rad of [2.5, 5, 8]) {
+      const score = (nx, nz) => {
+        const f = foot(nx, nz);
+        const lift = Math.max(0, f.lo - rawAt(nx, nz));
+        return f.fall + Math.min(lift, 1.5) * 0.9;
+      };
+      let best = { x, z, s: score(x, z) };
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        for (const rad of [2.5, 5, 8, 12]) {
           const nx = x + Math.cos(a) * rad, nz = z + Math.sin(a) * rad;
-          const f = foot(nx, nz).fall;
-          if (f < best.fall) best = { x: nx, z: nz, fall: f };
+          const sc = score(nx, nz);
+          if (sc < best.s) best = { x: nx, z: nz, s: sc };
         }
       }
       return best;
@@ -207,7 +225,7 @@ export class Garage {
        the carriageway is a bench the Cordon drives past) or on bad ground. */
     const half = (world.size || 8192) * 0.5;
     let placed = 0;
-    for (let i = 0; i < 40 && placed < 4; i++) {
+    for (let i = 0; i < 160 && placed < 4; i++) {
       const a = (placed / 4) * Math.PI * 2 + R() * 1.1;
       const rad = half * (0.28 + R() * 0.42);
       const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
