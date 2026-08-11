@@ -57,7 +57,7 @@ const TYPES = {
   /* The common one. A person, still shaped like a person, running. */
   stray: {
     /** Share of the population. */
-    share: 0.72,
+    share: 0.66,
     speed: 5.9, speedIdle: 0.85, hp: 2, damage: 0.055, reach: 1.65,
     sight: 46, fov: 0.30, hearing: 34,
     scale: [0.94, 1.06],
@@ -67,7 +67,7 @@ const TYPES = {
   skitter: {
     /* Faster than you, and short enough to be lost in undergrowth until it is
        inside your reach. It is the one that gets people killed. */
-    share: 0.20,
+    share: 0.19,
     speed: 7.4, speedIdle: 1.2, hp: 1, damage: 0.035, reach: 1.35,
     sight: 34, fov: 0.10, hearing: 44,
     scale: [0.88, 1.02],
@@ -77,12 +77,70 @@ const TYPES = {
   harrow: {
     /* Slow enough to outrun on foot and far too tough to trade with. It exists
        to make a fight a decision rather than a reflex. */
-    share: 0.08,
+    share: 0.075,
     speed: 4.2, speedIdle: 0.7, hp: 9, damage: 0.19, reach: 2.15,
     sight: 40, fov: 0.36, hearing: 30,
     scale: [1.0, 1.12],
     colour: [0.140, 0.122, 0.100],
     shadow: true,
+  },
+
+  /* ------------------------------------------------------------------------
+   * THE TWO THAT ARE NOT JUST BIGGER
+   *
+   * A mini-boss made of hit points is a longer version of a fight you already
+   * know how to win, and this game's fights are decided by ammunition and noise
+   * rather than by damage. So both of these attack a RULE instead of a number.
+   * ---------------------------------------------------------------------- */
+
+  keener: {
+    /*
+     * It does not fight you. It stands off at twenty metres and CALLS, every
+     * eight seconds, waking everything inside a hundred and fifty metres.
+     *
+     * This is the only clock in the game. Every other encounter is a static
+     * problem you can take as long as you like over — back off, reposition,
+     * pick them off from a rock. A keener makes waiting cost something, and it
+     * does it by turning the player's own best tool against them: the answer is
+     * to shoot it, and shooting is what brings more.
+     *
+     * Thin, tall, and it keeps its distance, so it reads as the wrong shape
+     * moving the wrong way at the back of a pack.
+     */
+    share: 0.05,
+    speed: 6.6, speedIdle: 1.0, hp: 3, damage: 0.04, reach: 1.5,
+    sight: 58, fov: 0.22, hearing: 52,
+    scale: [0.96, 1.06],
+    colour: [0.118, 0.112, 0.118],
+    shadow: true,
+    /** Hangs back at this range instead of closing. */
+    standoff: 19,
+    /** Seconds between calls, and how far each one reaches. */
+    callEvery: 8.0, callRadius: 150,
+  },
+
+  cairn: {
+    /*
+     * Plated across the chest and shoulders with scar tissue and whatever it
+     * has walked through. Frontal body hits do fifteen percent. It is not that
+     * it has more health — it has a WRONG ANGLE, and an eight-round tube cannot
+     * brute-force its way through one.
+     *
+     * Two answers, both skills rather than resources: get behind it, or take
+     * the head, which the plate does not cover. That is the whole design — a
+     * fight that a better player beats with less ammunition than a worse one,
+     * in a game where ammunition is the score.
+     */
+    share: 0.025,
+    speed: 3.4, speedIdle: 0.55, hp: 16, damage: 0.26, reach: 2.4,
+    sight: 38, fov: 0.42, hearing: 26,
+    scale: [1.16, 1.28],
+    colour: [0.132, 0.120, 0.106],
+    shadow: true,
+    /** Damage multiplier on frontal BODY hits. Head shots ignore it. */
+    plate: 0.15,
+    /** How far round the front the plate reaches, as a facing dot product. */
+    plateArc: 0.30,
   },
 };
 
@@ -547,6 +605,26 @@ export class Riven {
     a.screamT = Math.max(0, a.screamT - h);
     a.hitT = Math.max(0, a.hitT - h);
 
+    /*
+     * THE CALL. Only while it is actually hunting — a keener asleep in a nest
+     * is not summoning anything, or the whole map would be awake by dawn.
+     * `alarm` is the same contagion every scream uses, just louder and on a
+     * timer, so nothing new had to be invented for it to work.
+     */
+    if (def.callEvery && (a.state === CHASE || a.state === ATTACK)) {
+      a.callT = (a.callT || 0) + h;
+      if (a.callT >= def.callEvery) {
+        a.callT = 0;
+        a.rage = 1;
+        this.alarm(a.pos, def.callRadius || 150, 1.15);
+        const A2 = this.ctx.get('audio');
+        if (A2 && A2.play) {
+          A2.play('coyote', { position: a.pos, volume: 1.0, pitch: 0.30 });
+        }
+        this.ctx.emit('rivenCall', { position: a.pos.clone(), radius: def.callRadius || 150 });
+      }
+    }
+
     /* ---- dead: collapse, lie there a while, then free the slot ---------- */
     if (a.state === DEAD) {
       a.dead = Math.min(1, a.dead + h * 3.4);
@@ -598,7 +676,23 @@ export class Riven {
         break;
       }
       case CHASE: {
-        tx = p.x; tz = p.z;
+        /*
+         * STANDOFF. A keener that charges dies in the first second and its
+         * whole mechanic never fires, so it holds a range instead: inside it,
+         * the steering target is BEHIND the keener rather than on the player,
+         * and it walks backwards out to arm's length again. It never reaches
+         * ATTACK because its standoff is an order of magnitude past its reach.
+         */
+        if (def.standoff && d < def.standoff) {
+          const bx = a.pos.x - p.x, bz = a.pos.z - p.z;
+          const bl = Math.hypot(bx, bz) || 1;
+          tx = p.x + (bx / bl) * def.standoff * 1.3;
+          tz = p.z + (bz / bl) * def.standoff * 1.3;
+          a.backing = 1;
+        } else {
+          tx = p.x; tz = p.z;
+          a.backing = 0;
+        }
         wantSpeed = def.speed;
         if (a.alertT <= 0 && d > def.sight) a.state = ALERT;
         if (d < def.reach) { a.state = ATTACK; a.lunge = 0; }
@@ -755,7 +849,31 @@ export class Riven {
     const a = hit && hit.agent;
     if (!a || !a.alive || a.state === DEAD) return null;
     const head = hit.part === 'head';
-    const dmg = damage * (head ? 6 : 1);
+    let dmg = damage * (head ? 6 : 1);
+    /*
+     * THE PLATE. Frontal BODY hits only — the head is bare, which is the point:
+     * there are two answers and both of them are aim rather than ammunition.
+     * Facing is measured from the agent to the SHOOTER, so a cairn that has
+     * turned to follow you re-covers itself and standing still stops working.
+     */
+    const def0 = a.type.def;
+    if (def0.plate && !head) {
+      const px = this.ctx.player.position.x - a.pos.x;
+      const pz = this.ctx.player.position.z - a.pos.z;
+      const pl = Math.hypot(px, pz) || 1;
+      const facing = (px / pl) * Math.sin(a.yaw) + (pz / pl) * Math.cos(a.yaw);
+      if (facing > (def0.plateArc != null ? def0.plateArc : 0.30)) {
+        dmg *= def0.plate;
+        const PT0 = this.ctx.get('particles');
+        if (PT0 && PT0.burst) PT0.burst('dust', hit.point, 3, { scale: 0.20 });
+        const A0 = this.ctx.get('audio');
+        /* A ricochet, so the player is TOLD the angle is wrong rather than
+           being left to wonder why nothing is happening. */
+        if (A0 && A0.play) {
+          A0.play('hitmark', { position: hit.point, volume: 0.75, pitch: 1.9 });
+        }
+      }
+    }
     a.hp -= dmg;
     a.hitT = 0.2;
     const PT = this.ctx.get('particles');

@@ -109,20 +109,38 @@ export function buildRiven(kind, r) {
     return b.finish();
   }
 
-  const harrow = kind === 'harrow';
-  /* Proportions. A harrow is not just a scaled stray — it is far wider
-     through the chest and shorter in the neck, which is what makes it read as
-     heavy rather than as a big man. */
-  const H = harrow ? 2.15 : 1.62;
+  /*
+   * THE FOUR UPRIGHT SHAPES.
+   *
+   * `harrow` covers the two heavy ones for proportion; `plated` and `keener`
+   * then diverge where it matters. Each has to be identifiable as a SILHOUETTE,
+   * because both mini-boss mechanics are positional and a player who cannot
+   * tell which one they are looking at cannot choose the right answer:
+   *
+   *   keener  tall, thin, and its head is thrown BACK rather than carried
+   *           forward — the only Riven whose face points at the sky. It is also
+   *           the only one that walks backwards, so it is the wrong shape
+   *           moving the wrong way at the back of a pack.
+   *   cairn   a harrow with slabs across the chest and over each shoulder. The
+   *           plate is not decoration: its outline is the hitbox rule, so the
+   *           player can see the angle that does not work.
+   */
+  const plated = kind === 'cairn';
+  const keener = kind === 'keener';
+  const harrow = kind === 'harrow' || plated;
+  const H = keener ? 1.94 : (harrow ? 2.15 : 1.62);
   const hipY = H * 0.50;
   const shoY = H * 0.83;
-  const chestW = harrow ? 0.30 : 0.185;
-  const chestD = harrow ? 0.20 : 0.135;
+  const chestW = plated ? 0.34 : (harrow ? 0.30 : (keener ? 0.150 : 0.185));
+  const chestD = plated ? 0.23 : (harrow ? 0.20 : (keener ? 0.115 : 0.135));
 
   /* Torso, pitched forward, in two segments so there is a waist. `lean` moves
      the shoulders ahead of the hips in X, and it is the whole silhouette: a
      person stands with them stacked. */
-  const lean = harrow ? 0.24 : 0.17;
+  /* The keener stands nearly UPRIGHT. Every other Riven leans into its run;
+     this one is holding still and looking up, and that difference is most of
+     what identifies it before it calls. */
+  const lean = keener ? -0.06 : (harrow ? 0.24 : 0.17);
   const midY = hipY + (shoY - hipY) * 0.46;
   const pel = V(0, hipY, 0);
   const mid = V(lean * 0.40, midY, 0);
@@ -137,9 +155,13 @@ export function buildRiven(kind, r) {
 
   /* Head, dropped forward and down off the shoulders, with a hanging jaw. The
      jaw is the only bright shape on the model and it is where the eye goes. */
-  const neck = harrow ? 0.06 : 0.11;
+  /* Neck: long on the keener, and the skull runs UP from it instead of
+     forward and down, which is the head-thrown-back read. */
+  const neck = keener ? 0.30 : (harrow ? 0.06 : 0.11);
   const skullA = V(lean + 0.02, shoY + neck, 0);
-  const skullB = V(lean + (harrow ? 0.20 : 0.17), shoY + neck * (harrow ? 0.4 : 0.7), 0);
+  const skullB = keener
+    ? V(lean - 0.10, shoY + neck + 0.22, 0)
+    : V(lean + (harrow ? 0.20 : 0.17), shoY + neck * (harrow ? 0.4 : 0.7), 0);
   b.box(skullA, skullB,
     harrow ? 0.115 : 0.090, harrow ? 0.110 : 0.088,
     harrow ? 0.085 : 0.062, harrow ? 0.090 : 0.070,
@@ -166,6 +188,30 @@ export function buildRiven(kind, r) {
         V(lean + 0.02, shoY + 0.10, s * (chestW + 0.05)),
         0.13, 0.10, 0.10, 0.08, PART.TORSO, pel, { tone: TONES.NECRO, mot: 0.30 });
     }
+  }
+
+  if (plated) {
+    /*
+     * THE PLATE, and its outline IS the rule. Three slabs standing proud of the
+     * chest and each shoulder, covering the front and stopping at the collar so
+     * the head is visibly bare. A player who can see where the armour ends can
+     * work out both answers — go round it, or go over it — without being told.
+     */
+    const armour = { tone: [0.52, 0.50, 0.46], ao: [0.86, 1.0], mot: 0.36 };
+    b.box(V(lean + 0.10, hipY + (shoY - hipY) * 0.34, 0),
+      V(lean + 0.16, shoY - 0.06, 0),
+      chestW * 1.02, chestD * 1.10, chestW * 0.92, chestD * 1.02,
+      PART.TORSO, pel, armour);
+    for (const s of [1, -1]) {
+      b.box(V(lean + 0.02, shoY + 0.02, s * (chestW * 0.62)),
+        V(lean + 0.09, shoY - 0.22, s * (chestW * 1.02)),
+        0.14, 0.11, 0.12, 0.09, PART.TORSO, pel, armour);
+    }
+    /* a lower band across the gut, so the plate reads as courses rather than
+       one smooth shell */
+    b.box(V(lean + 0.06, hipY + 0.10, 0), V(lean + 0.11, hipY + 0.28, 0),
+      chestW * 0.94, 0.10, chestW * 0.98, 0.09,
+      PART.TORSO, pel, { tone: [0.46, 0.44, 0.41], ao: [0.9, 1.0], mot: 0.34 });
   }
 
   /* ---- ARMS. Long and hanging, with an elbow. The stray's fingertips reach
