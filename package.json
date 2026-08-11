@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0",
-
     "build": "vite build",
     "preview": "vite preview",
     "preview:lan": "vite preview --host 0.0.0.0",
@@ -14,7 +13,10 @@
     "smoke": "node tools/capture.mjs --smoke --fast --out shots/latest",
     "metrics": "python3 tools/metrics.py --shots shots/latest",
     "motion": "node tools/capture.mjs --motion --fast --out shots/motion --frames 24 && python3 tools/motion.py --dir shots/motion",
-    "scout": "node tools/scout.mjs --out shots/scout --n 40 --worst 6"
+    "scout": "node tools/scout.mjs --out shots/scout --n 40 --worst 6",
+    "conform": "node tools/conformance/run.mjs",
+    "conform:write": "node tools/conformance/run.mjs --write",
+    "conform:list": "node tools/conformance/run.mjs --list"
   },
   "keywords": [
     "threejs",
@@ -30,7 +32,7 @@
     "glsl"
   ],
   "license": "MIT",
-  "description": "An open-world survival ride through the Cascade Range, entirely in the browser. Procedurally generated volcanic terrain, weather, infected, a motorcycle and audio — no art assets. three.js + WebGL2.",
+  "description": "An open-world survival ride through the Cascade Range, entirely in the browser. Procedurally generated volcanic terrain, weather, infected, a motorcycle and audio \u2014 no art assets. three.js + WebGL2.",
   "dependencies": {
     "three": "^0.185.1"
   },
