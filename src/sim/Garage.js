@@ -144,27 +144,63 @@ export class Garage {
      *
      * The same mistake, and the same fix, as the compound's curtain wall.
      */
-    const put = (x, z, name) => {
-      let y = world.getHeight(x, z);
-      for (const [dx, dz] of [[-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5], [1.1, 0.7]]) {
+    /** Lowest and highest ground under the bench's footprint. */
+    const foot = (x, z) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const [dx, dz] of [[0, 0], [-1, -0.5], [1, -0.5], [-1, 0.5], [1, 0.5], [1.1, 0.7]]) {
         const h = world.getHeight(x + dx, z + dz);
-        if (h < y) y = h;
+        if (h < lo) lo = h;
+        if (h > hi) hi = h;
       }
+      return { lo, hi, fall: hi - lo };
+    };
+    /**
+     * SEAT ON THE LOWEST CORNER — and refuse the site if it is too steep to
+     * seat at all.
+     *
+     * A bench is one rigid mesh about a metre and a half across, so placed at
+     * the height of its own centre it hangs off the downhill corner by half the
+     * fall under it. Taking the minimum instead buries the uphill legs, which
+     * is invisible.
+     *
+     * But that only works while the fall is small. Measured, one of these sites
+     * had 0.90 m of it — a fifty percent slope — and seating THAT at the
+     * minimum puts the uphill end of the bench top at ground level. No seating
+     * rule fixes a bench on a hillside; the answer is not to put one there, so
+     * MAX_FALL rejects the site and the search tries somewhere else.
+     */
+    const MAX_FALL = 0.26;
+    const put = (x, z, name) => {
       this.benches.push({
-        pos: new THREE.Vector3(x, y, z),
+        pos: new THREE.Vector3(x, foot(x, z).lo, z),
         yaw: R() * Math.PI * 2, name,
       });
+    };
+    /** Nudge to the flattest spot within a few metres, for fixed placements. */
+    const settle = (x, z) => {
+      let best = { x, z, fall: foot(x, z).fall };
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        for (const rad of [2.5, 5, 8]) {
+          const nx = x + Math.cos(a) * rad, nz = z + Math.sin(a) * rad;
+          const f = foot(nx, nz).fall;
+          if (f < best.fall) best = { x: nx, z: nz, fall: f };
+        }
+      }
+      return best;
     };
 
     const town = ctx.poi.get('town');
     if (town) {
       const p = town.pos || town;
-      put(p.x + 6, p.z + 4, 'town');
+      const st = settle(p.x + 6, p.z + 4);
+      put(st.x, st.z, 'town');
     }
     const camp = ctx.poi.get('camp');
     if (camp) {
       const p = camp.pos || camp;
-      put(p.x + 3, p.z - 3, 'camp');
+      const sc = settle(p.x + 3, p.z - 3);
+      put(sc.x, sc.z, 'camp');
     }
 
     /* Four more on a jittered ring, rejected if they land on a road (a bench in
@@ -180,6 +216,7 @@ export class Garage {
       const y = world.getHeight(x, z);
       if (y < (world.waterLevel || 18) + 2 || y > 700) continue;
       if (roads && roads.distance2 && roads.distance2(x, z) < 40 * 40) continue;
+      if (foot(x, z).fall > MAX_FALL) continue;   // unbuildable cross-fall
       put(x, z, 'camp' + placed);
       placed++;
     }
