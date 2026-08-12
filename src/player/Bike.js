@@ -73,6 +73,13 @@ const ROLL = 0.55, DRAG = 0.0062;
 const ROAD_TOP_GAIN = 0.14;
 const ROAD_GRIP_GAIN = 0.20;
 
+/**
+ * Headlight, at full. Authored here and snapshotted by LocalLights at
+ * registration; _updateHeadlight scales it through the manager rather than
+ * writing the light directly. See _initHeadlight.
+ */
+const HEADLIGHT_I = 46;
+
 /** Seconds of full throttle in one tank. */
 const FUEL_SECONDS = 250;
 
@@ -301,11 +308,31 @@ export class Bike {
    * you can see by — and that it announces you from a very long way off.
    */
   _initHeadlight(lighting) {
-    const l = new THREE.SpotLight(0xfff0d8, 0, 62, 0.44, 0.45, 1.4);
-    l.position.set(0, 0, 0);
+    /*
+     * BOTH of these are in the BIKE'S LOCAL FRAME, and that is the whole point.
+     *
+     * The light is a child of `group`, which _pose translates to the machine
+     * and yaws to its heading. This used to write WORLD coordinates into it
+     * every frame, which the group's own transform then applied a second time
+     * and put the lamp kilometres out to sea. In local space the lamp and its
+     * aim are both constants — 0.95 m up, 0.72 m forward of centre, aimed 26 m
+     * down the road and slightly low, because a headlight on the horizon lights
+     * nothing you are about to ride into — so they are set once here and the
+     * light rides the bike for free.
+     *
+     * The intensity is authored at full here rather than at zero, because
+     * LocalLights snapshots it at registration and rebuilds `intensity` from
+     * that snapshot every frame. Registering at zero meant the manager wrote
+     * zero over every value _updateHeadlight produced, for the whole life of
+     * the feature.
+     */
+    const l = new THREE.SpotLight(0xfff0d8, HEADLIGHT_I, 62, 0.44, 0.45, 1.4);
+    l.position.set(0, 0.95, 0.72);
     l.target = new THREE.Object3D();
+    l.target.position.set(0, 0.10, 26);
     this.group.add(l, l.target);
     this.headlight = l;
+    this._lighting = lighting || null;
     if (lighting && lighting.addLight) {
       lighting.addLight(l, { flicker: 0.04, radius: 62, importance: 2.4 });
     }
@@ -698,7 +725,7 @@ export class Bike {
     this.wheelF.rotation.x = this._wheelAng;
 
     this.group.updateMatrixWorld(true);
-    this._updateHeadlight(fwd);
+    this._updateHeadlight();
     this._updateRoost(h, rx, ry, rz, fwd);
     this._updateContact(rx, ry, rz, fx, fy, fz);
     this._updateVisibility();
@@ -792,7 +819,7 @@ export class Bike {
     return this._accelSm;
   }
 
-  _updateHeadlight(fwd) {
+  _updateHeadlight() {
     const on = this.headlightOn && this.running;
     const l = this.headlight;
     if (!l) return;
@@ -801,14 +828,17 @@ export class Bike {
     const dark = 1 - (this.ctx.env.daylight || 0);
     const want = (on || (this.running && dark > 0.55)) ? 1 : 0;
     this._beam = (this._beam || 0) + (want - (this._beam || 0)) * 0.12;
-    l.intensity = this._beam * 46;
-    l.visible = this._beam > 0.02;
-    const p = this.renderPos;
-    l.position.set(p.x + fwd.x * 0.72, p.y + 0.95, p.z + fwd.z * 0.72);
-    /* Aimed slightly down — a headlight on the horizon lights nothing you are
-       about to ride into. */
-    l.target.position.set(p.x + fwd.x * 26, p.y + 0.10, p.z + fwd.z * 26);
-    l.target.updateMatrixWorld();
+    /* Through the manager, never onto the light: it rebuilds `intensity` from
+       the authored value every frame, so a direct write is gone before the
+       frame is drawn. `visible` is the manager's too — it owns the hard rank
+       clamp that keeps the lit-program count stable — so this does not touch
+       it either. Position and aim are constants in the local frame. */
+    if (this._lighting && this._lighting.setLightIntensity) {
+      this._lighting.setLightIntensity(l, this._beam * HEADLIGHT_I);
+    } else {
+      l.intensity = this._beam * HEADLIGHT_I;
+      l.visible = this._beam > 0.02;
+    }
     if (this.mats && this.mats.lens) this.mats.lens.emissiveIntensity = this._beam * 7;
 
     /* Tail lamp. Dim whenever there is a running motor, four times that on the

@@ -254,6 +254,31 @@ export class LocalLights {
     return light;
   }
 
+  /**
+   * Change a registered light's AUTHORED brightness.
+   *
+   * You must go through here. Every frame the manager rebuilds
+   *
+   *     light.intensity = baseIntensity * weight * flicker * share
+   *
+   * from the value snapshotted at `add()` time, so anything a caller writes
+   * onto `light.intensity` is overwritten before the frame is drawn. That is
+   * not visible from the outside and it cost this project a headlight: Bike.js
+   * drove `light.intensity` directly while the manager wrote zero over it, and
+   * the only symptom was a glowing lens casting no light — which reads as an
+   * art problem rather than a wiring one, and so went unlooked-at.
+   *
+   * @param {THREE.Light} light  must already be registered
+   * @param {number} v  the intensity the light would have if it were the only
+   *                    one on screen; the budget scales it from there
+   */
+  setIntensity(light, v) {
+    const e = this.entries.find((x) => x.light === light);
+    if (!e) { light.intensity = v; return false; }
+    e.baseIntensity = v;
+    return true;
+  }
+
   remove(light) {
     const i = this.entries.findIndex((e) => e.light === light);
     if (i === -1) return;
