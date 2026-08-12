@@ -881,6 +881,260 @@
      ]
     }
    }
+  },
+  "bike.handling": {
+   "centring": [
+    {
+     "halfLife": 0.666667,
+     "v": 2
+    },
+    {
+     "halfLife": 0.666667,
+     "v": 6
+    },
+    {
+     "halfLife": 0.55,
+     "v": 12
+    },
+    {
+     "halfLife": 0.383333,
+     "v": 20
+    },
+    {
+     "halfLife": 0.3,
+     "v": 27
+    }
+   ],
+   "dab": [
+    {
+     "v": 0,
+     "yawRate": 1.15
+    },
+    {
+     "v": 0.4,
+     "yawRate": 1.04381
+    },
+    {
+     "v": 1,
+     "yawRate": 0.884537
+    }
+   ],
+   "geometry": {
+    "barHalf": 0.335,
+    "barY": 1.075,
+    "barZ": 0.545,
+    "forkOffset": 0.048,
+    "forkTravel": 0.135,
+    "frontAxle": 0.855,
+    "headY": 0.985,
+    "headZ": 0.66,
+    "latGrip": 8.26285,
+    "maxLean": 0.7,
+    "rake": 0.475,
+    "rearAxle": -0.66,
+    "rimR": 0.215,
+    "seatY": 0.815,
+    "seatZ": -0.115,
+    "trail": 0.118306,
+    "tyre": 0.072,
+    "wheelR": 0.335,
+    "wheelbase": 1.515
+   },
+   "road": [
+    {
+     "aLat": 5.00279,
+     "lean": 0.471591,
+     "overshoot": 1,
+     "radius": 1.799,
+     "steer": 0.699911,
+     "v": 3,
+     "yawRate": 1.6676
+    },
+    {
+     "aLat": 8.26033,
+     "lean": 0.69985,
+     "overshoot": 1,
+     "radius": 4.35818,
+     "steer": 0.334555,
+     "v": 6,
+     "yawRate": 1.37672
+    },
+    {
+     "aLat": 8.26159,
+     "lean": 0.699925,
+     "overshoot": 1,
+     "radius": 12.1042,
+     "steer": 0.124516,
+     "v": 10,
+     "yawRate": 0.826159
+    },
+    {
+     "aLat": 8.26268,
+     "lean": 0.69999,
+     "overshoot": 1,
+     "radius": 27.2309,
+     "steer": 0.0555781,
+     "v": 15,
+     "yawRate": 0.550845
+    },
+    {
+     "aLat": 8.26284,
+     "lean": 0.699999,
+     "overshoot": 1,
+     "radius": 48.4095,
+     "steer": 0.0312853,
+     "v": 20,
+     "yawRate": 0.413142
+    },
+    {
+     "aLat": 8.26285,
+     "lean": 0.7,
+     "overshoot": 1,
+     "radius": 75.6398,
+     "steer": 0.0200265,
+     "v": 25,
+     "yawRate": 0.330514
+    },
+    {
+     "aLat": 8.26285,
+     "lean": 0.7,
+     "overshoot": 1,
+     "radius": 88.2262,
+     "steer": 0.0171701,
+     "v": 27,
+     "yawRate": 0.306031
+    }
+   ],
+   "road30": [
+    {
+     "aLat": 5.00264,
+     "lean": 0.471578,
+     "overshoot": 1,
+     "radius": 1.79905,
+     "steer": 0.699896,
+     "v": 3,
+     "yawRate": 1.66755
+    },
+    {
+     "aLat": 8.26008,
+     "lean": 0.699835,
+     "overshoot": 1,
+     "radius": 4.35831,
+     "steer": 0.334546,
+     "v": 6,
+     "yawRate": 1.37668
+    },
+    {
+     "aLat": 8.26146,
+     "lean": 0.699917,
+     "overshoot": 1,
+     "radius": 12.1044,
+     "steer": 0.124514,
+     "v": 10,
+     "yawRate": 0.826146
+    },
+    {
+     "aLat": 8.26265,
+     "lean": 0.699988,
+     "overshoot": 1,
+     "radius": 27.231,
+     "steer": 0.0555779,
+     "v": 15,
+     "yawRate": 0.550843
+    },
+    {
+     "aLat": 8.26283,
+     "lean": 0.699999,
+     "overshoot": 1,
+     "radius": 48.4095,
+     "steer": 0.0312853,
+     "v": 20,
+     "yawRate": 0.413142
+    },
+    {
+     "aLat": 8.26285,
+     "lean": 0.7,
+     "overshoot": 1,
+     "radius": 75.6398,
+     "steer": 0.0200265,
+     "v": 25,
+     "yawRate": 0.330514
+    },
+    {
+     "aLat": 8.26285,
+     "lean": 0.7,
+     "overshoot": 1,
+     "radius": 88.2262,
+     "steer": 0.0171701,
+     "v": 27,
+     "yawRate": 0.306031
+    }
+   ],
+   "wet": [
+    {
+     "aLat": 2.89157,
+     "lean": 0.286641,
+     "overshoot": 1,
+     "radius": 3.11249,
+     "steer": 0.45299,
+     "v": 3,
+     "yawRate": 0.963858
+    },
+    {
+     "aLat": 2.89117,
+     "lean": 0.286603,
+     "overshoot": 1,
+     "radius": 12.4517,
+     "steer": 0.121075,
+     "v": 6,
+     "yawRate": 0.481862
+    },
+    {
+     "aLat": 2.89156,
+     "lean": 0.286639,
+     "overshoot": 1,
+     "radius": 34.5834,
+     "steer": 0.0437792,
+     "v": 10,
+     "yawRate": 0.289156
+    },
+    {
+     "aLat": 2.89194,
+     "lean": 0.286675,
+     "overshoot": 1,
+     "radius": 77.8025,
+     "steer": 0.0194699,
+     "v": 15,
+     "yawRate": 0.192796
+    },
+    {
+     "aLat": 2.89199,
+     "lean": 0.28668,
+     "overshoot": 1,
+     "radius": 138.313,
+     "steer": 0.010953,
+     "v": 20,
+     "yawRate": 0.1446
+    },
+    {
+     "aLat": 2.892,
+     "lean": 0.28668,
+     "overshoot": 1,
+     "radius": 216.114,
+     "steer": 0.00701009,
+     "v": 25,
+     "yawRate": 0.11568
+    },
+    {
+     "aLat": 2.892,
+     "lean": 0.28668,
+     "overshoot": 1,
+     "radius": 252.075,
+     "steer": 0.00601005,
+     "v": 27,
+     "yawRate": 0.107111
+    }
+   ]
   }
  }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
-import { BIKE, buildBody, buildFront, buildWheel, assemble } from './bike/BikeBuild.js';
+import { buildBody, buildFront, buildWheel, assemble } from './bike/BikeBuild.js';
+import { BIKE, steerStep, yawRateFor, leanFor } from './bike/BikeHandling.js';
 import { BikeAudio } from './bike/BikeAudio.js';
 import { ContactShadow } from './rig/CharMaterial.js';
 import { HorseCollider } from './horse/HorseCollider.js';
@@ -18,23 +19,14 @@ import { HorseCollider } from './horse/HorseCollider.js';
  * stirrup irons the bike publishes footpegs; where it published a saddle bone
  * the bike publishes the seat.
  *
- * HANDLING
- * The steering is a genuine bicycle model, not a car turned sideways:
+ * HANDLING lives in BikeHandling.js, which imports nothing and holds the
+ * machine's dimensions and the three lines the whole feel comes out of: the
+ * bicycle model, the balance condition, and the tyre's lateral grip limit.
+ * Keeping it dependency-free means the conformance suite covers the handling
+ * the same way it covers the build grammar, and a port reimplements one file.
  *
- *      yawRate = v · tan(steer) / wheelbase
- *
- * Everything that makes a bike feel like a bike falls out of that one line for
- * free. You cannot turn at a standstill. Turn radius grows with speed, so the
- * same handlebar input that flicks you round a tree at 5 m/s is a long lazy arc
- * at 25. And the lean follows from the same physics —
- *
- *      lean = atan(v · yawRate / g)
- *
- * — which is the real balance condition for a single-track vehicle, so the
- * bike banks by exactly as much as the corner actually demands. Faking the
- * lean off steering input instead is the usual shortcut and it is instantly
- * readable as wrong, because the bike then leans hardest where it is turning
- * least.
+ * This class owns everything that is NOT that: the throttle, the gearbox, the
+ * fuel, the traction model that feeds `grip` in, and every transform.
  *
  * FUEL
  * The tank is the survival loop. Full, it is about four minutes of hard riding
@@ -51,6 +43,8 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _rgt = new THREE.Vector3();
+/** Roost off snow is snow, not dirt. */
+const _snow = new THREE.Color(0.80, 0.83, 0.88);
 /** How close you have to be to get on. Matches the horse's old range. */
 export const MOUNT_RANGE = 4.8;
 
@@ -136,6 +130,10 @@ export class Bike {
     /* Everything below is render-side smoothing, updated in _pose. */
     this.lean = 0;
     this.steer = 0;
+    this._steerVel = 0;
+    /* Scratch for steerStep, which mutates in place so the model stays free of
+       allocation and of any opinion about where the state is kept. */
+    this._steerState = { steer: 0, vel: 0 };
     this.pitch = 0;
     this._wheelAng = 0;
     this._forkComp = 0;
@@ -155,6 +153,9 @@ export class Bike {
   async init() {
     const ctx = this.ctx;
     const rand = rng((ctx.seed ^ 0x8b1d) >>> 0);
+    /* Its own stream: the roost is consumed per frame at a rate that depends
+       on framerate, and must never be able to shift the build's draws. */
+    this._rand = rng((ctx.seed ^ 0x51ce) >>> 0);
     const proc = ctx.get('procTextures');
 
     const mats = this._materials(proc);
@@ -163,6 +164,7 @@ export class Bike {
     const { parts, canGeo } = buildBody(rand);
     this.body = assemble(parts, {
       steel: mats.steel, engine: mats.engine, leather: mats.leather, canvas: mats.canvas,
+      lamp: mats.lamp,
     }, 'bikeBody');
 
     /* The spare fuel can is its own mesh so it can be hidden when spent — the
@@ -192,7 +194,7 @@ export class Bike {
     this.wheelR.position.set(0, BIKE.wheelR, BIKE.rearAxle);
     /* The front wheel hangs off the fork, in the fork's own frame: straight
        down the leg from the steering head. */
-    this.wheelF.position.set(0, -0.545, 0.048);
+    this.wheelF.position.set(0, -0.545, BIKE.forkOffset);
     this.forkSlide.add(this.wheelF);
 
     /** The part of the machine that leans. Everything except nothing, really —
@@ -278,6 +280,13 @@ export class Bike {
       leather: mk('leather', { color: new THREE.Color(0.16, 0.13, 0.11), roughness: 0.86 }),
       canvas: mk('canvas_tent', { color: new THREE.Color(0.30, 0.29, 0.24), roughness: 0.95 }),
       rubber: tyre,
+      /* Tail lens. Emissive driven in _updateHeadlight: a running-light glow
+         with the motor on, four times that under the brake. */
+      lamp: new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0.22, 0.030, 0.028), roughness: 0.35, metalness: 0.0,
+        emissive: new THREE.Color(1.0, 0.10, 0.06), emissiveIntensity: 0,
+        side: THREE.DoubleSide,
+      }),
       /* The lens. Emissive is driven in _pose; at zero it is just dirty glass. */
       lens: new THREE.MeshStandardMaterial({
         color: new THREE.Color(0.30, 0.29, 0.26), roughness: 0.28, metalness: 0.1,
@@ -450,6 +459,7 @@ export class Bike {
         /* Pushing it. Slow, and it is meant to hurt. */
         a += this.speed < PADDLE ? 1.4 : 0;
       }
+      this._braking = i.f < 0 ? 1 : 0;
       if (i.f < 0) {
         a -= this.speed > 0.4 ? BRAKE * grip : 2.4;
         if (this.speed <= 0.05) this.speed = Math.max(-PADDLE, this.speed - 1.6 * h);
@@ -467,14 +477,35 @@ export class Bike {
       if (!this.running && this.speed > PADDLE) this.speed = Math.max(PADDLE, this.speed - 3.0 * h);
       if (Math.abs(this.speed) < 0.02 && i.f === 0) this.speed = 0;
 
-      /* --- steering: the bicycle model ---------------------------------- */
-      const maxSteer = 0.86 / (1 + Math.abs(this.speed) * 0.30);
-      const target = steerWant * maxSteer;
-      this.steer += (target - this.steer) * Math.min(1, h * 9);
-      let yawRate = (this.speed * Math.tan(this.steer)) / BIKE.wheelbase;
-      /* Below walking pace you are dabbing your feet, not steering — allow a
-         pivot the bicycle model cannot give, or parking is impossible. */
-      if (Math.abs(this.speed) < 1.4) yawRate += steerWant * 1.15 * (1 - Math.abs(this.speed) / 1.4);
+      /* --- steering ------------------------------------------------------ */
+      /*
+       * Both halves of this live in BikeHandling.js, because both are pure
+       * arithmetic the conformance suite can check and a port can reimplement.
+       * What they do, briefly:
+       *
+       *   maxSteerFor  how hard the TYRES can turn at this speed. Replaces a
+       *                hand-tuned 0.86/(1+0.3v) curve that permitted about 4 g
+       *                at top speed, so the bike turned four times harder than
+       *                it leaned and the lean clamp sat permanently saturated.
+       *                It is also where `grip` finally reaches the corners: the
+       *                rain, the pumice and the tyre upgrade previously scaled
+       *                only drive and braking, so the ROAD_GRIP comment's
+       *                promise that off-road you "corner like a shopping
+       *                trolley" was a promise the code did not keep.
+       *
+       *   steerStep    TRAIL — the 118 mm of castor behind the steering axis —
+       *                as a spring whose stiffness grows with v². That is the
+       *                transient and the self-centring: heavy at 25 m/s, light
+       *                at 8, gone at walking pace, which is why the dab
+       *                override inside yawRateFor exists at all.
+       */
+      const steerState = this._steerState;
+      steerState.steer = this.steer; steerState.vel = this._steerVel;
+      steerStep(steerState, steerWant, this.speed, grip, h);
+      this.steer = steerState.steer;
+      this._steerVel = steerState.vel;
+
+      const yawRate = yawRateFor(this.speed, this.steer, steerWant);
       this.yaw += yawRate * h;
       this._yawRate = yawRate;
 
@@ -500,7 +531,9 @@ export class Bike {
       const k = this.holdStill ? 0 : Math.max(0, 1 - 3.2 * h);
       this.speed *= k;
       this.throttle = 0;
+      this._braking = 0;
       this.steer *= Math.max(0, 1 - 4 * h);
+      this._steerVel = 0;
       this._yawRate = 0;
       s.velocity.x *= k;
       s.velocity.z *= k;
@@ -607,8 +640,12 @@ export class Bike {
 
     /* --- lean: the real balance condition ------------------------------- */
     const yawRate = this._yawRate || 0;
-    let leanTarget = Math.atan2(Math.abs(this.speed) * yawRate, 9.81);
-    leanTarget = THREE.MathUtils.clamp(leanTarget, -0.62, 0.62);
+    /* The real balance condition, clamped at the peg-scrape angle. That clamp
+       is a backstop, not a limiter: maxSteerFor already caps the corner at
+       exactly this angle's worth of grip, so anything reaching it is a
+       transient. If it is doing visible work, something upstream is letting
+       the bike turn harder than it can lean. */
+    let leanTarget = leanFor(this.speed, yawRate);
     /* Parked, it is on its side stand, tipped over toward the rider's left. */
     if (!this.mounted && Math.abs(this.speed) < 0.05) leanTarget = 0.17;
     this.lean += (leanTarget - this.lean) * Math.min(1, h * 7.5);
@@ -662,8 +699,87 @@ export class Bike {
 
     this.group.updateMatrixWorld(true);
     this._updateHeadlight(fwd);
+    this._updateRoost(h, rx, ry, rz, fwd);
     this._updateContact(rx, ry, rz, fx, fy, fz);
     this._updateVisibility();
+  }
+
+  /**
+   * ROOST — what the driven wheel throws.
+   *
+   * A footfall puffs dust straight up and that is the right model for a boot
+   * or a hoof, which is why the generic emitter in Particles.js does exactly
+   * that. A wheel does not: it is a single contact patch shearing loose
+   * material and firing it rearward at something close to rim speed, from one
+   * point behind the machine. Two consequences the omnidirectional puff can
+   * never produce, and both of them are the whole visual —
+   *
+   *   the tail is BEHIND you, not around you, so it reads as a wake and
+   *   frames the bike in third person instead of fogging it; and
+   *
+   *   it responds to SLIP rather than to speed. Cruising a gravel road at
+   *   70 barely smokes. Pinning the throttle out of a corner on the same
+   *   gravel at 20 throws a rooster tail, because the difference is not how
+   *   fast the bike is going but how much the tyre is failing to hold.
+   *
+   * Both terms are already computed for the physics — `grip` and `throttle`
+   * for spin, the acceleration estimate for a locked rear under braking — so
+   * this costs nothing but the reading. Wet ground swaps the dust for spray:
+   * same emission, different material, and it stops the bike raising a dust
+   * cloud in the rain.
+   */
+  _updateRoost(h, rx, ry, rz, fwd) {
+    /* Retried while null rather than cached once: _pose runs during init, at
+       which point the particle system may not be registered yet. */
+    let P = this._particles;
+    if (!P) P = this._particles = this.ctx.get('particles') || null;
+    if (!P || !P.enabled || !this.mounted) { this._roostAcc = 0; return; }
+
+    const av = Math.abs(this.speed);
+    if (av < 1.1) { this._roostAcc = 0; return; }
+
+    /* Loose material under the driven wheel. A made surface has none, by
+       definition — that is what "made" means. */
+    const surf = this.ctx.world.getSurface(rx, rz);
+    const loose = THREE.MathUtils.clamp(
+      (surf.sand + surf.dirt * 0.75 + surf.grass * 0.22 + surf.snow * 0.85)
+      * (1 - (this.onRoad || 0)), 0, 1);
+    if (loose < 0.05) { this._roostAcc = 0; return; }
+
+    /* Slip: throttle the tyre cannot take, plus a rear locked under braking. */
+    const spin = THREE.MathUtils.clamp(
+      this.throttle * (1 - this.grip) * 2.4
+      + Math.max(0, -(this._accelSm || 0)) * 0.045, 0, 1.4);
+
+    const wet = THREE.MathUtils.clamp(this.ctx.env.wetness || 0, 0, 1);
+    const rate = (1.6 + av * 1.25) * loose * (0.30 + spin * 1.7);
+    this._roostAcc = (this._roostAcc || 0) + rate * h;
+    let n = Math.min(7, this._roostAcc | 0);
+    if (n <= 0) return;
+    this._roostAcc -= n;
+
+    const r = this._rand;
+    /* Thrown rearward in WORLD space. The bike is outrunning its own roost,
+       so a modest backward speed already leaves a long tail on screen. */
+    const back = -(2.4 + av * 0.28);
+    const snowy = surf.snow > 0.5;
+    while (n-- > 0) {
+      /* Contact patch, with a little scatter across the tyre's width. */
+      const sx = (r() - 0.5) * 0.22, sz = (r() - 0.5) * 0.30;
+      _v.set(rx + sx, ry + 0.05, rz + sz);
+      _v2.set(fwd.x * back + (r() - 0.5) * 1.5,
+        0.9 + spin * 2.2 + r() * 0.8,
+        fwd.z * back + (r() - 0.5) * 1.5);
+      if (wet > 0.4) {
+        P.burst('splash', _v, 1, { scale: 0.5 + av * 0.03, vel: _v2 });
+      } else {
+        P.burst('dust', _v, 1, {
+          scale: (0.7 + av * 0.035) * (1 - wet * 0.6),
+          vel: _v2,
+          color: snowy ? _snow : null,
+        });
+      }
+    }
   }
 
   /** Longitudinal acceleration estimate, m/s², for the brake dive. */
@@ -694,6 +810,17 @@ export class Bike {
     l.target.position.set(p.x + fwd.x * 26, p.y + 0.10, p.z + fwd.z * 26);
     l.target.updateMatrixWorld();
     if (this.mats && this.mats.lens) this.mats.lens.emissiveIntensity = this._beam * 7;
+
+    /* Tail lamp. Dim whenever there is a running motor, four times that on the
+       brake. No light is cast — a brake light illuminates nothing, it only
+       announces, and paying for a second shadowless spot to say so would be
+       spending the light budget on the one lamp whose whole job is its lens. */
+    const lamp = this.mats && this.mats.lamp;
+    if (lamp) {
+      const wantT = this.running ? (this.mounted && this._braking ? 1 : 0.22) : 0;
+      this._tail = (this._tail || 0) + (wantT - (this._tail || 0)) * 0.35;
+      lamp.emissiveIntensity = this._tail * 4.2;
+    }
   }
 
   _updateContact(rx, ry, rz, fx, fy, fz) {

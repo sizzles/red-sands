@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { BIKE } from './BikeHandling.js';
 
 /**
  * BROKEN ROAD — THE BIKE, as geometry.
@@ -29,26 +30,14 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * ============================================================================
  */
 
-/** Geometry, in metres. A real mid-size road bike, measured. */
-export const BIKE = {
-  wheelbase: 1.515,
-  rearAxle: -0.660,
-  frontAxle: 0.855,
-  wheelR: 0.335,          // tyre outer radius
-  tyre: 0.072,            // section
-  rimR: 0.215,
-  /** Steering head: the point the fork rotates about, and the rake off vertical. */
-  headY: 0.985,
-  headZ: 0.660,
-  rake: 0.475,            // 27.2 degrees
-  seatY: 0.815,
-  seatZ: -0.115,
-  barY: 1.075,
-  barZ: 0.545,
-  barHalf: 0.335,
-  /** Suspension travel available to the fork, metres. */
-  forkTravel: 0.135,
-};
+/*
+ * Dimensions and the handling model both live in BikeHandling.js, which imports
+ * nothing and is therefore testable in node and portable to another language.
+ * Re-exported here so every existing consumer of `BIKE` is unaffected: the mesh
+ * and the physics read one table, so the thing you steer and the thing you see
+ * are the same machine by construction.
+ */
+export { BIKE, TRAIL } from './BikeHandling.js';
 
 /* -------------------------------------------------------------- primitives */
 
@@ -169,7 +158,7 @@ export function buildWheel(rng, { rear }) {
  * space and all rigid with respect to each other.
  */
 export function buildBody(rng) {
-  const P = { steel: [], engine: [], leather: [], canvas: [] };
+  const P = { steel: [], engine: [], leather: [], canvas: [], lamp: [] };
   const S = P.steel, E = P.engine, L = P.leather, C = P.canvas;
 
   const headX = 0, headY = BIKE.headY, headZ = BIKE.headZ;
@@ -227,6 +216,22 @@ export function buildBody(rng) {
     S.push(tube(s * 0.105, 0.700, -0.560, s * 0.145, 0.735, -0.760, 0.014, 6));
   }
 
+  /*
+   * Tail lamp. A housing and a red lens on its own material, because the lens
+   * is driven: it glows dim whenever the motor is running and hard under the
+   * brake. It is worth the two triangles almost entirely for what it does
+   * behind you — this is a third-person game and the bike is on screen the
+   * whole time you are slowing for something, so the brake light is the only
+   * confirmation the player gets that the input registered.
+   */
+  S.push(box(0.090, 0.062, 0.040, 0, 0.760, -0.815));               // housing
+  {
+    const lens = new THREE.PlaneGeometry(0.076, 0.048);
+    lens.rotateY(Math.PI);
+    lens.translate(0, 0.760, -0.836);
+    P.lamp.push(lens);
+  }
+
   /* --- what a man living on the bike actually carries -------------------- */
   C.push(blob(0.115, 1.0, 1.0, 1.9, 0, 0.800, -0.790, 10, 0, Math.PI / 2, 0)); // bedroll
   for (const s of [1, -1]) {
@@ -267,7 +272,7 @@ export function buildFront() {
   const S = P.steel;
   /* Axle depth below the head, along the fork axis. */
   const legLen = 0.545;
-  const offset = 0.048;         // yoke offset — trail, and it is visible
+  const offset = BIKE.forkOffset;   // yoke offset — trail, and it is visible
 
   for (const s of [1, -1]) {
     S.push(tube(s * 0.112, -0.030, offset, s * 0.112, -legLen, offset, 0.026, 8));

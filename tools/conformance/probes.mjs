@@ -9,6 +9,10 @@ import { buildRiven } from '../../src/sim/riven/RivenBody.js';
 import { buildCordon } from '../../src/sim/cordon/CordonBody.js';
 import { TRACKS, TRACK_KEYS } from '../../src/sim/Garage.js';
 import { GUN_TRACKS, GUN_KEYS } from '../../src/sim/Gunsmith.js';
+import {
+  BIKE, TRAIL, MAX_LEAN, LAT_GRIP, STEER_LOCK,
+  steerStep, yawRateFor, leanFor,
+} from '../../src/player/bike/BikeHandling.js';
 
 /**
  * BROKEN ROAD — CONFORMANCE PROBES
@@ -327,6 +331,77 @@ export const PROBES = [
       let bike = 0;
       for (const k of TRACK_KEYS) bike += TRACKS[k].cost.reduce((a, b) => a + b, 0);
       return { keys: GUN_KEYS, tracks: GUN_TRACKS, totalRifle: total, totalBike: bike };
+    },
+  },
+  {
+    id: 'bike.handling',
+    why: 'The machine is the thing the player spends the most time inside, and '
+       + 'all of it is arithmetic: dimensions, trail, and the steering model. '
+       + 'Sampled by driving the real fixed-step loop to steady state at seven '
+       + 'speeds on three surfaces, so the golden records the actual settled '
+       + 'corner rather than a formula restated. The a_lat column is the one '
+       + 'that matters: it is the lateral acceleration the bike pulls, and it '
+       + 'must never exceed g*tan(MAX_LEAN)*grip. It once did, by a factor of '
+       + 'about five, because the cornering limit and the lean clamp were two '
+       + 'independent constants that disagreed.',
+    run() {
+      const geometry = { ...BIKE, trail: TRAIL, maxLean: MAX_LEAN, latGrip: LAT_GRIP };
+
+      /* Full one-side input held to steady state, at the fixed step the game
+         actually runs, then again at the worst step it tolerates. A model that
+         is stable at 60 Hz and diverges at 30 is a model that fails on a
+         loaded machine and nowhere else. */
+      const corner = (grip, hz) => {
+        const h = 1 / hz;
+        return [3, 6, 10, 15, 20, 25, 27].map((v) => {
+          const S = { steer: 0, vel: 0 };
+          let peak = 0;
+          for (let t = 0; t < 6; t += h) {
+            steerStep(S, 1, v, grip, h);
+            peak = Math.max(peak, Math.abs(S.steer));
+          }
+          const yawRate = yawRateFor(v, S.steer, 1);
+          return {
+            v,
+            steer: S.steer,
+            radius: BIKE.wheelbase / Math.tan(Math.max(1e-9, S.steer)),
+            yawRate,
+            aLat: Math.abs(v * yawRate),
+            lean: leanFor(v, yawRate),
+            /* Ratio of the transient peak to the settled value. Anything above
+               1 is overshoot; a port with a different integrator shows up
+               here before it shows up anywhere a player could feel it. */
+            overshoot: peak / Math.abs(S.steer),
+          };
+        });
+      };
+
+      /* Bars released from full lock: how long to shed half the angle. This is
+         trail, and nothing else, so it is the single number a port gets wrong
+         if it transcribes the spring but not the v-squared term. */
+      const centring = [2, 6, 12, 20, 27].map((v) => {
+        const S = { steer: 0, vel: 0 }, h = 1 / 60;
+        for (let t = 0; t < 6; t += h) steerStep(S, 1, v, 1, h);
+        const start = Math.abs(S.steer);
+        let half = -1;
+        for (let t = 0; t < 8; t += h) {
+          steerStep(S, 0, v, 1, h);
+          if (Math.abs(S.steer) <= start * 0.5) { half = t; break; }
+        }
+        return { v, halfLife: half };
+      });
+
+      return {
+        geometry,
+        road: corner(1.0, 60),
+        road30: corner(1.0, 30),
+        /* The traction floor: stock tyres, wet pumice, off the road. */
+        wet: corner(0.35, 60),
+        centring,
+        /* Parking. The bicycle model cannot pivot a stationary bike; without
+           the dab override the player cannot manoeuvre in a yard at all. */
+        dab: [0, 0.4, 1.0].map((v) => ({ v, yawRate: yawRateFor(v, STEER_LOCK, 1) })),
+      };
     },
   },
 ];

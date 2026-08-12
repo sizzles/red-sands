@@ -38,7 +38,10 @@ changes nobody meant to make. This repository has shipped:
   whose detail is too shallow;
 - four tower ladders leading to decks **no character in the game could reach**,
   with the connectivity check reporting the position fully connected;
-- two workbenches **17 m apart** that a comment claimed were 120.
+- two workbenches **17 m apart** that a comment claimed were 120;
+- a motorcycle cornering at **four g** while its lean sat pinned against a
+  clamp set for one, because the two numbers describing the same physical
+  quantity were declared five hundred lines apart.
 
 Every one of those is a number that changed and nobody noticed. Every one would
 have failed here.
@@ -98,6 +101,12 @@ Run `npm run conform:list` for the current set with its reasoning. Broadly:
   player cannot reach.
 - **`tables.*`** — the garage and gunsmith economies, plus the totals the two
   are balanced against each other on.
+- **`bike.handling`** — the machine's dimensions, its trail, and the steering
+  model driven to steady state at seven speeds on three surfaces and at two
+  fixed steps. The column that matters is `aLat`: the lateral acceleration the
+  bike pulls, which must never exceed `g·tan(maxLean)·grip`. It once exceeded
+  it by a factor of five, because the cornering limit and the lean clamp were
+  two independent constants that disagreed and only one of them was visible.
 
 ## Not covered
 
