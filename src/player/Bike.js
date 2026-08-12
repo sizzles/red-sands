@@ -765,11 +765,28 @@ export class Bike {
     const av = Math.abs(this.speed);
     if (av < 1.1) { this._roostAcc = 0; return; }
 
-    /* Loose material under the driven wheel. A made surface has none, by
-       definition — that is what "made" means. */
+    /*
+     * Material the contact patch can shear loose. A made surface has none by
+     * definition — that is what "made" means — hence the `1 - onRoad` term.
+     *
+     * CALIBRATED AGAINST THE GROUND THIS GAME ACTUALLY HAS. The first cut
+     * weighted these as if for a desert: sand 1.0 and turf 0.22, on the
+     * assumption that turf is nearly inert. A sweep of 6,544 points over a
+     * 5.2 km square came back with sand present in ZERO of them — this is the
+     * Cascades, it is meadow and dirt and forest, and the sand term is
+     * vestigial from the world this project used to be. So the coefficient
+     * that mattered was the one for grass, and it had been set as an
+     * afterthought: the common case in the entire game was scoring 0.32 and
+     * throwing about thirteen puffs across thirteen metres, which is invisible.
+     *
+     * A spinning knobbly on turf does not raise desert dust, but it is not
+     * inert either — it tears through the root mat and throws grass and the
+     * soil under it. Half of sand is about right for that, and dirt is nearly
+     * all of it.
+     */
     const surf = this.ctx.world.getSurface(rx, rz);
     const loose = THREE.MathUtils.clamp(
-      (surf.sand + surf.dirt * 0.75 + surf.grass * 0.22 + surf.snow * 0.85)
+      (surf.sand + surf.dirt * 0.90 + surf.grass * 0.50 + surf.snow * 0.85)
       * (1 - (this.onRoad || 0)), 0, 1);
     if (loose < 0.05) { this._roostAcc = 0; return; }
 
