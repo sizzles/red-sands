@@ -167,9 +167,15 @@ window.__GAME = {
     return true;
   },
 
+  /** Where generation time went, most expensive first. */
+  initStats() {
+    return { totalMs: engine.initTotalMs, systems: engine.initProfile(14) };
+  },
+
   stats() {
     const info = engine.renderer.info;
     return {
+      initTotalMs: engine.initTotalMs,
       drawCalls: info.render.calls,
       triangles: info.render.triangles,
       programs: info.programs ? info.programs.length : 0,
@@ -190,5 +196,9 @@ window.__GAME = {
 };
 
 if (import.meta.env && import.meta.env.DEV) {
-  console.log('[BROKEN ROAD] booted at quality:', quality.name);
+  console.log('[BROKEN ROAD] booted at quality:', quality.name,
+    `in ${(engine.initTotalMs / 1000).toFixed(1)}s`);
+  /* The five that actually cost something. Generation is the longest wait this
+     game asks for, so it should say where it went without being asked. */
+  console.table(engine.initProfile(5).map(([id, ms]) => ({ system: id, ms })));
 }
