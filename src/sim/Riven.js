@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
 import { buildRiven, patchRivenAnim, varyInstanceColour } from './riven/RivenBody.js';
+import { SlotRing } from './riven/AttackSlots.js';
 
 /**
  * BROKEN ROAD — THE RIVEN
@@ -52,6 +53,15 @@ import { buildRiven, patchRivenAnim, varyInstanceColour } from './riven/RivenBod
 /* -------------------------------------------------------------------------- */
 
 const IDLE = 0, ALERT = 1, CHASE = 2, ATTACK = 3, DEAD = 4;
+/**
+ * CIRCLE — in range, and waiting its turn.
+ *
+ * Everything that reaches the player but has no attack ticket holds the ring
+ * instead of swinging. See AttackSlots.js for why a crowd needs an arbiter at
+ * all; the short version is that ten agents each independently deciding to
+ * swing is not a fight, it is a geometry problem.
+ */
+const CIRCLE = 5;
 
 const TYPES = {
   /* The common one. A person, still shaped like a person, running. */
@@ -59,6 +69,8 @@ const TYPES = {
     /** Share of the population. */
     share: 0.66,
     speed: 5.9, speedIdle: 0.85, hp: 2, damage: 0.055, reach: 1.65,
+    /* Ticket weight. See AttackSlots.js — the ring's whole budget is 3. */
+    slotCost: 1,
     sight: 46, fov: 0.30, hearing: 34,
     scale: [0.94, 1.06],
     colour: [0.128, 0.118, 0.104],
@@ -69,6 +81,9 @@ const TYPES = {
        inside your reach. It is the one that gets people killed. */
     share: 0.19,
     speed: 7.4, speedIdle: 1.2, hp: 1, damage: 0.035, reach: 1.35,
+    /* Cheap and fast: three skitters can be on you at once, which is what
+       makes a pack of them frightening rather than merely quick. */
+    slotCost: 1,
     sight: 34, fov: 0.10, hearing: 44,
     scale: [0.88, 1.02],
     colour: [0.104, 0.100, 0.092],
@@ -79,6 +94,8 @@ const TYPES = {
        to make a fight a decision rather than a reflex. */
     share: 0.075,
     speed: 4.2, speedIdle: 0.7, hp: 9, damage: 0.19, reach: 2.15,
+    /* Two thirds of the ring. A harrow plus one stray, and nothing else. */
+    slotCost: 2,
     sight: 40, fov: 0.36, hearing: 30,
     scale: [1.0, 1.12],
     colour: [0.140, 0.122, 0.100],
@@ -109,6 +126,13 @@ const TYPES = {
      */
     share: 0.05,
     speed: 6.6, speedIdle: 1.0, hp: 3, damage: 0.04, reach: 1.5,
+    /*
+     * NEVER COMMITS. Its standoff is nineteen metres against a reach of one
+     * and a half — it exists to scream, not to swing — so a ticket in its
+     * hands is a ticket nobody can use. Cost zero excuses it from the ring
+     * entirely rather than relying on it never getting close enough.
+     */
+    slotCost: 0,
     sight: 58, fov: 0.22, hearing: 52,
     scale: [0.96, 1.06],
     colour: [0.118, 0.112, 0.118],
@@ -133,6 +157,13 @@ const TYPES = {
      */
     share: 0.025,
     speed: 3.4, speedIdle: 0.55, hp: 16, damage: 0.26, reach: 2.4,
+    /*
+     * THE WHOLE RING. A cairn fights you alone while everything else circles,
+     * which is the entire reason to have weights rather than a head count:
+     * the mini-boss gets a duel in the middle of a mob, for free, out of the
+     * same arbiter that stops ten strays swinging at once.
+     */
+    slotCost: 3,
     sight: 38, fov: 0.42, hearing: 26,
     scale: [1.16, 1.28],
     colour: [0.132, 0.120, 0.106],
@@ -160,6 +191,8 @@ const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3(1, 1, 1);
 const _HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
 const _UP = new THREE.Vector3(0, 1, 0);
+/** Scratch for the ring target; circlePoint writes {x,z} into it. */
+const _ring = { x: 0, z: 0 };
 
 export class Riven {
   static id = 'riven';
@@ -167,6 +200,14 @@ export class Riven {
   constructor(ctx) {
     this.ctx = ctx;
     this.rand = rng((ctx.seed ^ 0x51ae37b1) >>> 0);
+    /*
+     * The attack ring. Its own stream, because it consumes randomness per
+     * agent per frame-of-first-contact and must never be able to shift the
+     * bodies the build stream draws.
+     */
+    this.ring = new SlotRing(rng((ctx.seed ^ 0x2c19f5) >>> 0));
+    /** Reused flat list of live agents handed to the arbiter each frame. */
+    this._slotAgents = [];
     this.enabled = true;
     this._types = new Map();
     this._agents = [];
@@ -573,6 +614,20 @@ export class Riven {
       if (a.alive && a.state !== DEAD) this._sense(a, p, h);
     }
 
+    /*
+     * ONE ARBITRATION PASS FOR THE WHOLE CROWD, before anybody steps.
+     *
+     * It has to be here rather than inside _step: a per-agent decision cannot
+     * know how many others already committed this frame, which is the entire
+     * question. Doing it up front also means _step only ever reads a decision
+     * that has already been made, so the state machine stays local.
+     */
+    this._slotAgents.length = 0;
+    for (const [, T] of this._types) {
+      for (const a of T.agents) if (a.alive) this._slotAgents.push(a);
+    }
+    this.ring.update(this._slotAgents, p.x, p.z, h, DEAD);
+
     let hunting = 0;
     for (const [, T] of this._types) {
       let dirty = false;
@@ -587,7 +642,7 @@ export class Riven {
          * position it was culled from.
          */
         if (!a.alive) { dirty = true; continue; }
-        if (a.state === CHASE || a.state === ATTACK) hunting++;
+        if (a.state === CHASE || a.state === ATTACK || a.state === CIRCLE) hunting++;
         this._write(a);
         dirty = true;
       }
@@ -611,7 +666,7 @@ export class Riven {
      * `alarm` is the same contagion every scream uses, just louder and on a
      * timer, so nothing new had to be invented for it to work.
      */
-    if (def.callEvery && (a.state === CHASE || a.state === ATTACK)) {
+    if (def.callEvery && (a.state === CHASE || a.state === ATTACK || a.state === CIRCLE)) {
       a.callT = (a.callT || 0) + h;
       if (a.callT >= def.callEvery) {
         a.callT = 0;
@@ -695,7 +750,32 @@ export class Riven {
         }
         wantSpeed = def.speed;
         if (a.alertT <= 0 && d > def.sight) a.state = ALERT;
-        if (d < def.reach) { a.state = ATTACK; a.lunge = 0; }
+        /* In range is no longer the same thing as permission to swing. */
+        if (d < def.reach + this.ring.cfg.band) {
+          a.state = a.slot ? ATTACK : CIRCLE;
+          a.lunge = 0;
+        }
+        break;
+      }
+      case CIRCLE: {
+        /*
+         * IN RANGE, WAITING ITS TURN.
+         *
+         * It presses the ring rather than the player: close enough to be a
+         * threat, on its own side, drifting round looking for a way in. The
+         * moment the arbiter frees a ticket it commits, and the transition is
+         * instant because the agent is already at arm's length — the wait
+         * reads as menace rather than as hesitation.
+         */
+        if (a.slot) { a.state = ATTACK; a.lunge = 0; break; }
+        if (d > def.reach + this.ring.cfg.band + 1.5) { a.state = CHASE; break; }
+        if (a.alertT <= 0 && d > def.sight) { a.state = ALERT; break; }
+        const t = this.ctx.time ? this.ctx.time.elapsed : 0;
+        this.ring.circlePoint(a, p.x, p.z, t, _ring);
+        tx = _ring.x; tz = _ring.z;
+        /* Slower than a charge: this is a crowd looking for an opening, and
+           at full chase speed the ring reads as a carousel. */
+        wantSpeed = def.speed * 0.55;
         break;
       }
       case ATTACK: {
@@ -708,9 +788,19 @@ export class Riven {
         if (a.lunge > 0.85) {
           a.lunge = 0;
           if (d < def.reach + 0.4) this._hitPlayer(a, def);
-          else a.state = CHASE;
+          /*
+           * Yield the ticket on the swing, not on leaving range. That is what
+           * makes the ring take turns: whoever just landed one goes to the
+           * back of the queue and somebody else steps in, so a player being
+           * mobbed sees a rotation of attackers rather than the same two.
+           */
+          this.ring.spend(a);
+          a.state = d < def.reach + 1.2 ? CIRCLE : CHASE;
         }
-        if (d > def.reach + 1.2) a.state = CHASE;
+        /* Lost the ticket mid-swing — an incumbent is safe for minHold, so
+           this only fires when something heavier arrived. */
+        if (!a.slot && a.lunge < 0.05) a.state = CIRCLE;
+        if (d > def.reach + 1.2) { this.ring.spend(a); a.state = CHASE; }
         break;
       }
       default: break;
@@ -745,7 +835,7 @@ export class Riven {
     a.phase += (a.speed * h) / stride * 6.2831;
     a.gait += (THREE.MathUtils.clamp(a.speed / (def.speed * 0.8), 0, 1) - a.gait)
       * Math.min(1, h * 6);
-    const rageWant = (a.state === CHASE || a.state === ATTACK) ? 1
+    const rageWant = (a.state === CHASE || a.state === ATTACK || a.state === CIRCLE) ? 1
       : (a.state === ALERT ? 0.35 : 0);
     a.rage += (rageWant - a.rage) * Math.min(1, h * 3.5);
 

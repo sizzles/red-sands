@@ -13,6 +13,7 @@ import {
   BIKE, TRAIL, MAX_LEAN, LAT_GRIP, STEER_LOCK,
   steerStep, yawRateFor, leanFor,
 } from '../../src/player/bike/BikeHandling.js';
+import { SlotRing, RING } from '../../src/sim/riven/AttackSlots.js';
 
 /**
  * BROKEN ROAD — CONFORMANCE PROBES
@@ -331,6 +332,77 @@ export const PROBES = [
       let bike = 0;
       for (const k of TRACK_KEYS) bike += TRACKS[k].cost.reduce((a, b) => a + b, 0);
       return { keys: GUN_KEYS, tracks: GUN_TRACKS, totalRifle: total, totalBike: bike };
+    },
+  },
+  {
+    id: 'combat.ring',
+    why: 'The attack arbiter decides how much damage a crowd can deliver at '
+       + 'once, which is the difference between a fight and a geometry '
+       + 'problem. Driven here with a synthetic crowd — twelve agents closing '
+       + 'on a fixed point, one of them a cairn — for 240 fixed steps, '
+       + 'recording committed weight every step. The invariant that matters is '
+       + 'that committed weight NEVER exceeds the budget: exceed it and the '
+       + 'player takes unbounded simultaneous hits, which is exactly the '
+       + 'behaviour the ring exists to remove. Also records how the swings '
+       + 'distributed, because a ring that never rotates is a ring that has '
+       + 'quietly become a queue of one.',
+    run() {
+      const R = rng(SEED ^ 0x9c31);
+      /* A crowd walking in from every side, weights mixed. */
+      const mk = (i, cost, reach, at) => ({
+        alive: true, state: 2, slot: false, slotT: 0, swingCD: 0,
+        pos: { x: Math.cos(i) * at, z: Math.sin(i) * at },
+        type: { def: { reach, slotCost: cost } },
+        swings: 0, id: i,
+      });
+      const agents = [];
+      for (let i = 0; i < 11; i++) agents.push(mk(i, 1, 1.65, 9 + (i % 3) * 2));
+      agents.push(mk(11, 3, 2.4, 12));              // the cairn
+      /* One keener, which must never take a ticket it cannot use. */
+      agents.push(Object.assign(mk(12, 0, 1.5, 6), { keener: true }));
+
+      const ring = new SlotRing(R);
+      const h = 1 / 60;
+      let maxCommitted = 0, framesOverBudget = 0, keenerHeld = 0;
+      const committedSeries = [];
+      for (let f = 0; f < 240; f++) {
+        /* Everyone closes on the origin at their own pace. */
+        for (const a of agents) {
+          const d = Math.hypot(a.pos.x, a.pos.z) || 1;
+          const step = (a.type.def.slotCost === 3 ? 2.6 : 4.4) * h;
+          if (d > a.type.def.reach) {
+            a.pos.x -= (a.pos.x / d) * step;
+            a.pos.z -= (a.pos.z / d) * step;
+          }
+        }
+        const spent = ring.update(agents, 0, 0, h, 4);
+        maxCommitted = Math.max(maxCommitted, spent);
+        if (spent > RING.budget) framesOverBudget++;
+        for (const a of agents) {
+          if (a.keener && a.slot) keenerHeld++;
+          /* A committed agent swings on its cadence and yields. */
+          if (a.slot) {
+            a.lunge = (a.lunge || 0) + h;
+            if (a.lunge > 0.85) { a.lunge = 0; a.swings++; ring.spend(a); }
+          }
+        }
+        if (f % 24 === 0) committedSeries.push(spent);
+      }
+      const swings = agents.map((a) => a.swings);
+      return {
+        budget: RING.budget,
+        maxCommitted,
+        framesOverBudget,
+        keenerFramesHoldingATicket: keenerHeld,
+        committedSeries,
+        swingsByAgent: swings,
+        totalSwings: swings.reduce((x, y) => x + y, 0),
+        /* How many distinct agents ever got a turn. A ring that has collapsed
+           into a queue of one shows up here and nowhere else. */
+        agentsThatSwung: swings.filter((n) => n > 0).length,
+        cairnSwings: swings[11],
+        tuning: RING,
+      };
     },
   },
   {

@@ -101,6 +101,14 @@ Run `npm run conform:list` for the current set with its reasoning. Broadly:
   player cannot reach.
 - **`tables.*`** — the garage and gunsmith economies, plus the totals the two
   are balanced against each other on.
+- **`combat.ring`** — the attack arbiter, driven with a synthetic crowd of
+  twelve closing on a point for 240 fixed steps. The invariant is
+  `framesOverBudget == 0`: exceed the ticket budget and the player takes
+  unbounded simultaneous hits, which is the exact behaviour the ring exists to
+  remove. It also records how the swings distributed, because a ring that has
+  quietly collapsed into a queue of one still passes the budget check — and it
+  caught a real one on its first run, a cairn that could never get a ticket
+  because weight decided what a slot COST without deciding who was offered one.
 - **`bike.handling`** — the machine's dimensions, its trail, and the steering
   model driven to steady state at seven speeds on three surfaces and at two
   fixed steps. The column that matters is `aLat`: the lateral acceleration the

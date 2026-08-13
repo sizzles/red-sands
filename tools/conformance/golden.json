@@ -882,6 +882,52 @@
     }
    }
   },
+  "combat.ring": {
+   "agentsThatSwung": 7,
+   "budget": 3,
+   "cairnSwings": 1,
+   "committedSeries": [
+    0,
+    0,
+    0,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   "framesOverBudget": 0,
+   "keenerFramesHoldingATicket": 0,
+   "maxCommitted": 3,
+   "swingsByAgent": [
+    1,
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    1,
+    0,
+    1,
+    0,
+    1,
+    0
+   ],
+   "totalSwings": 7,
+   "tuning": {
+    "band": 3.2,
+    "budget": 3,
+    "cooldown": 1.5,
+    "heavy": 4,
+    "incumbency": 6,
+    "minHold": 0.9,
+    "orbit": 0.55,
+    "radius": 4
+   }
+  },
   "bike.handling": {
    "centring": [
     {
