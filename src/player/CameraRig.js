@@ -149,6 +149,25 @@ export class CameraRig {
 
   _apply(pos, look, fov) {
     const cam = this.camera;
+    /*
+     * LAST LINE OF DEFENCE. A non-finite camera is the worst failure mode this
+     * renderer has: nothing projects, every local light scores NaN and is
+     * culled, and it throws no error — it presents as the game having frozen.
+     * Once written it is also unrecoverable, because the next frame smooths
+     * toward the value it just poisoned.
+     *
+     * So the rig refuses to write one. Holding the last good shot is always
+     * better than a black screen, and the warning gives whoever caused it
+     * something to search for.
+     */
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z)
+      || !Number.isFinite(look.x) || !Number.isFinite(look.y) || !Number.isFinite(look.z)) {
+      if (!this._warnedNaN) {
+        this._warnedNaN = true;
+        console.warn('[CameraRig] refused a non-finite camera; holding the last good shot');
+      }
+      return;
+    }
     cam.position.copy(pos);
     _m.lookAt(pos, look, UP);
     cam.quaternion.setFromRotationMatrix(_m);
@@ -427,7 +446,21 @@ export class CameraRig {
     // Mounted, the bob has to come off the HORSE's gait or it freezes solid:
     // the rider's own gait clock stops the moment he is in the saddle.
     const horse = mounted > 0.5 ? this.ctx.player.horse : null;
-    const gp = horse ? horse.gaitPhase : (player ? player.gaitPhase : 0);
+    /*
+     * The mount must PUBLISH a phase, and this must not assume it does.
+     *
+     * When the horse became a motorcycle nobody gave the bike a gait clock, so
+     * `horse.gaitPhase` was undefined and this line evaluated `undefined * 2π`.
+     * That NaN reached _bob, then _pos, then camera.position — and a camera at
+     * a non-finite position projects nothing AND makes every local light score
+     * NaN, sort last and fall outside the budget. On screen it is a total
+     * freeze, one second into pressing E, with no error in the console.
+     *
+     * The bike now has a phase. The guard stays anyway: this is a silent,
+     * total, unrecoverable failure and it costs one isFinite to refuse.
+     */
+    const raw = horse ? horse.gaitPhase : (player ? player.gaitPhase : 0);
+    const gp = Number.isFinite(raw) ? raw : 0;
     const gaitPhase = gp * Math.PI * 2;
     const bobAmp = lerp(0.020, 0.042) * speed01;
     _v2.set(

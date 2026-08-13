@@ -148,6 +148,11 @@ export class Bike {
     this._prevGroundY = 0;
     this._shake = 0;
     /**
+     * 0..1 cycling, read by CameraRig for the mounted camera bob. Part of the
+     * mount interface the horse defined; see _pose for what drives it.
+     */
+    this.gaitPhase = 0;
+    /**
      * Interface tag. Player checks this to switch from the equestrian seat
      * (sit back, hands on the horn) to a rider's crouch with hands on the bars.
      */
@@ -709,6 +714,26 @@ export class Bike {
     this._shake = idleness * 0.0042 * (0.6 + this.throttle * 0.8);
     const shakeY = Math.sin(t * 47.0) * this._shake;
     const shakeR = Math.sin(t * 39.0 + 1.1) * this._shake * 2.4;
+
+    /*
+     * GAIT PHASE, 0..1, for the camera rig.
+     *
+     * The rig takes the mounted camera's bob from whatever you are riding,
+     * because the rider's own gait clock stops the moment he is aboard. The
+     * horse published one; the bike inherited the horse's whole interface and
+     * not this, so the rig read `undefined`, multiplied it by 2π and froze the
+     * game one second into every mount. See the note in CameraRig.
+     *
+     * A bike has no gait, but it does have a motor, and what your hands feel
+     * on the bars is a slow throb that quickens a little with the revs and
+     * never gets fast enough to read as vibration — the actual firing rate is
+     * 16 Hz at idle, which no camera should move at. So: 1.1 Hz idling to
+     * about 2.7 at the top of the band. Amplitude is the rig's business, and
+     * it already scales the whole thing by road speed, so a bike sitting on
+     * its stand does not bob at all.
+     */
+    const beat = this.running ? 1.1 + (this.rpm / MAX_RPM) * 1.6 : 0;
+    this.gaitPhase = (this.gaitPhase + beat * h) % 1;
 
     /* --- write the transforms -------------------------------------------- */
     this.group.position.set(base.x, groundY + shakeY, base.z);
