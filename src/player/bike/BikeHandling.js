@@ -118,6 +118,67 @@ export const STEER_LOCK = 0.70;
  * into spring rate; DAMP is the steering damper plus forearms.
  */
 export const STEER_SPRING = 6.0, TRAIL_GAIN = 0.50, STEER_DAMP = 4.5;
+
+/**
+ * LONGITUDINAL — the numbers that decide how it goes and how it stops.
+ *
+ * These live here rather than in Bike.js for the same reason the rest of the
+ * model does: they are arithmetic, so they can be audited. On their own they
+ * are arbitrary — DRAG is 0.0062 of nothing in particular — but multiplied
+ * through a mass they become engine power in kilowatts, a tyre friction
+ * coefficient, and a 0-100 time, and those have known ranges. tools/bike
+ * does exactly that conversion, which is the only way to tell a plausible
+ * constant from a correct one.
+ */
+export const TOP_SPEED = 27.0;      // m/s, the gearing limit, ~97 km/h
+export const CRUISE = 13.5;         // m/s without the throttle pinned
+export const PADDLE = 1.6;          // m/s walking it backwards, feet down
+export const DRIVE = 8.4;           // m/s^2 at the wheel, before the falloff
+/**
+ * The speed at which engine thrust reaches ZERO — which is NOT the top speed,
+ * and conflating the two is what the audit caught.
+ *
+ * Thrust used to fade out at TOP_SPEED itself, so it hit zero at exactly the
+ * speed the bike was supposed to be doing, and any resistance at all pulled the
+ * equilibrium below it. With the old drag figures the machine settled at
+ * 66 km/h while the comment above it claimed 97, and the TOP_SPEED clamp was
+ * never once the binding constraint — drag was. Nobody noticed because 66 km/h
+ * on a dirt road still feels quick.
+ *
+ * Fading to zero at 33 puts the drag balance at 99 km/h, so the gearing limit
+ * is what actually holds it back, as intended.
+ */
+export const DRIVE_FADE = 33.0;
+/**
+ * Braking, m/s^2. 0.88 g.
+ *
+ * Was 13.0, which is 1.33 g — a figure no motorcycle has ever achieved on any
+ * surface. Road rubber peaks near 1.0 g and a two-wheeler cannot use all of it
+ * without going over the front, so hard braking on a good bike is 0.9. This
+ * stops from 100 km/h in 45 m, against a published road-test figure of about
+ * 40 for a bike with better brakes than this one.
+ */
+export const BRAKE = 8.6;
+/**
+ * Rolling resistance and air, both derived rather than dialled.
+ *
+ *   ROLL = Crr * g            with Crr 0.015, tyre on tarmac
+ *   DRAG = 0.5*rho*Cd*A / m   with Cd 0.65, A 0.75 m^2, a naked bike and an
+ *                             upright rider, over the 250 kg all-up mass
+ *
+ * The old pair were 0.55 and 0.0062 — nearly four times the rolling resistance
+ * a tyre has and five times the drag of a motorcycle. Together they cost the
+ * bike a third of its top speed.
+ */
+export const ROLL = 0.15;
+export const DRAG = 0.0016;
+/**
+ * All-up mass in kg: a stripped 650 twin, a rider, and a full tank. The
+ * simulation itself is massless — it works in accelerations throughout — so
+ * this exists ONLY so the audit can turn those accelerations into forces and
+ * powers that can be checked against the physical world.
+ */
+export const MASS = 250;
 /**
  * Below this, in m/s, you are dabbing your feet rather than steering. The
  * bicycle model cannot pivot a stationary bike and without an override parking

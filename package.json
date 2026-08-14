@@ -16,7 +16,9 @@
     "scout": "node tools/scout.mjs --out shots/scout --n 40 --worst 6",
     "conform": "node tools/conformance/run.mjs",
     "conform:write": "node tools/conformance/run.mjs --write",
-    "conform:list": "node tools/conformance/run.mjs --list"
+    "conform:list": "node tools/conformance/run.mjs --list",
+    "bike:audit": "node tools/bike/audit.mjs",
+    "bike:check": "node tools/bike/audit.mjs --strict"
   },
   "keywords": [
     "threejs",

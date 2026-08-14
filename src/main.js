@@ -29,6 +29,7 @@ import { Loot } from './sim/Loot.js';
 import { CameraRig } from './player/CameraRig.js';
 import { PostFX } from './render/PostFX.js';
 import { Audio } from './audio/Audio.js';
+import { WorldMap } from './ui/WorldMap.js';
 import { HUD } from './ui/HUD.js';
 import { TouchControls } from './ui/TouchControls.js';
 
@@ -74,6 +75,7 @@ const S = [
   [new Particles(ctx),   60],
   [new PostFX(ctx),      95],
   [new Audio(ctx),       97],
+  [new WorldMap(ctx),    98],
   [new HUD(ctx),         99],
   [new TouchControls(ctx), 100],
 ];
@@ -97,7 +99,7 @@ const LABELS = {
   gunsmith: 'oiling the rifle',
   compoundSite: 'closing the pass', compound: 'walling the pass',
   camera: 'framing the shot', postfx: 'grading the film',
-  audio: 'tuning the wind', hud: 'final touches', touch: 'final touches', ready: 'ready',
+  audio: 'tuning the wind', worldMap: 'folding the map', hud: 'final touches', touch: 'final touches', ready: 'ready',
 };
 
 await engine.initAll((p, id) => {

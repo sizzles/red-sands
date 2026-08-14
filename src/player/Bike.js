@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { rng } from '../core/Context.js';
 import { buildBody, buildFront, buildWheel, assemble } from './bike/BikeBuild.js';
-import { BIKE, steerStep, yawRateFor, leanFor } from './bike/BikeHandling.js';
+import {
+  BIKE, steerStep, yawRateFor, leanFor,
+  TOP_SPEED, CRUISE, PADDLE, DRIVE, DRIVE_FADE, BRAKE, ROLL, DRAG,
+} from './bike/BikeHandling.js';
 import { BikeAudio } from './bike/BikeAudio.js';
 import { ContactShadow } from './rig/CharMaterial.js';
 import { HorseCollider } from './horse/HorseCollider.js';
@@ -48,17 +51,6 @@ const _snow = new THREE.Color(0.80, 0.83, 0.88);
 /** How close you have to be to get on. Matches the horse's old range. */
 export const MOUNT_RANGE = 4.8;
 
-/** Top speed in m/s, flat out on good ground. ~97 km/h. */
-const TOP_SPEED = 27.0;
-/** Cruising speed without the throttle pinned. */
-const CRUISE = 13.5;
-/** Reverse — walking the bike back with your feet down. */
-const PADDLE = 1.6;
-/** m/s², at the wheel. Falls off with speed via the (1 − v/TOP) term. */
-const DRIVE = 8.4;
-const BRAKE = 13.0;
-/** Coast-down: rolling resistance plus a v² air term. */
-const ROLL = 0.55, DRAG = 0.0062;
 /**
  * What a road is worth.
  *
@@ -486,7 +478,10 @@ export class Bike {
       if (this.running) {
         /* Torque falls off toward top speed, and a bike will not pull a steep
            grade in the same gear it cruises in. */
-        a += this.throttle * DRIVE * grip * Math.max(0, 1 - this.speed / TOP_SPEED);
+        /* Thrust fades to zero at DRIVE_FADE, not at TOP_SPEED: fading it out
+           at the speed the bike is meant to reach guarantees it never gets
+           there, which cost this machine a third of its top speed. */
+        a += this.throttle * DRIVE * grip * Math.max(0, 1 - this.speed / DRIVE_FADE);
       } else if (i.f > 0) {
         /* Pushing it. Slow, and it is meant to hurt. */
         a += this.speed < PADDLE ? 1.4 : 0;
