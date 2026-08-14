@@ -99,10 +99,21 @@ export class Engine {
   async initAll(onProgress = () => {}) {
     const ordered = this._systems.slice().sort((a, b) => a.__initOrder - b.__initOrder);
     const n = ordered.length;
+    /**
+     * Wall-clock milliseconds each system spent in init, and the total.
+     *
+     * Generation is the longest wait this game asks anyone for and nothing was
+     * measuring where it goes. Without this, "boot feels slow" can only be
+     * answered by hunch, and the hunch is usually terrain when it might be the
+     * road router or a texture bake. It is one timestamp per system.
+     */
+    this.initMs = {};
+    const t0 = performance.now();
     for (let i = 0; i < n; i++) {
       const s = ordered[i];
       const id = s.constructor.id || s.id;
       onProgress(i / n, id);
+      const t = performance.now();
       if (s.init) {
         try {
           await s.init();
@@ -111,10 +122,19 @@ export class Engine {
           s.__failed = true;
         }
       }
+      this.initMs[id] = Math.round((performance.now() - t) * 10) / 10;
     }
+    this.initTotalMs = Math.round(performance.now() - t0);
     onProgress(1, 'ready');
     this.ready = true;
     this.ctx.emit('ready');
+  }
+
+  /** Init cost, most expensive first, as [id, ms] pairs. */
+  initProfile(top = 12) {
+    return Object.entries(this.initMs || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, top);
   }
 
   _onResize() {

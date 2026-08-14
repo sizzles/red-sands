@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { Regions, timePhrase } from './Regions.js';
 import { PauseMenu } from './PauseMenu.js';
-import { MOUNT_RANGE } from '../player/Horse.js';
+import { MOUNT_RANGE } from '../player/Bike.js';
+import { TRACKS, TRACK_KEYS } from '../sim/Garage.js';
+import { GUN_TRACKS, GUN_KEYS } from '../sim/Gunsmith.js';
 
 /**
  * ============================================================================
@@ -71,6 +73,15 @@ export class HUD {
       // the law, and the skinning progress ring. Both are absent until they
       // are not, and both fade out completely — no empty slots, no chrome.
       wanted: 0, skin: 0,
+      /* The machine (fuel, gear, speed) while riding, and the threat readout
+       * while anything is actually hunting. Same discipline as everything
+       * else here: neither exists when it has nothing to say. */
+      ride: 0, threat: 0,
+      /** The workbench panel. */
+      garage: 0,
+      gunsmith: 0,
+      /** The objective line, once the compound has been seen. */
+      goal: 0,
     };
     /** Hit feedback on the reticle. -1 = nothing has been hit. */
     this._hitT = -1;
@@ -335,6 +346,19 @@ export class HUD {
     }
     const coresWanted = (this.health < 0.995 || this.stamina < 0.995 || this._coresHold > 0) ? 1 : 0;
 
+    /* --- the horde ------------------------------------------------------ */
+    const RV = ctx.get('riven');
+    this._hunting = RV ? (RV.hunting || 0) : 0;
+    this._noise = RV ? (RV.noise || 0) : 0;
+    const CD = ctx.get('cordon');
+    this._engaged = CD ? (CD.engaged || 0) : 0;
+    this._garage = ctx.get('garage');
+    this._gunsmith = ctx.get('gunsmith');
+    const CP = ctx.get('compound');
+    this._goal = CP && CP.status ? CP.status() : null;
+    this._threatHold = (this._hunting > 0 || this._engaged > 0)
+      ? 2.6 : Math.max(0, (this._threatHold || 0) - dt);
+
     /* --- contextual prompt from nearby interactables -------------------- */
     this._promptT = Math.max(0, this._promptT - dt);
     if (this._promptT <= 0) this._scanInteractables();
@@ -396,11 +420,26 @@ export class HUD {
       wanted: (!paused && this._law
         && (this._law.level > 0 || this._law.state === 'warning')) ? 1 : 0,
       skin: (!paused && this._skin) ? 1 : 0,
+      ride: (!paused && ctx.player.mode === 'mounted') ? 1 : 0,
+      /*
+       * The threat gauge is the one piece of chrome allowed to appear
+       * unbidden, because the information it carries — something has seen you
+       * — is the only thing in this game a player cannot work out for
+       * themselves in time to act on it. It holds for a moment after the last
+       * one loses you, so it does not flicker while a pack circles.
+       */
+      threat: (!paused && this._threatHold > 0) ? 1 : 0,
+      garage: (!paused && this._garage && this._garage.open) ? 1 : 0,
+      gunsmith: (!paused && this._gunsmith && this._gunsmith.open) ? 1 : 0,
+      goal: (!paused && this._goal && this._goal.seen && !this._goal.escaped
+        && this._goal.distance < 700) ? 1 : 0,
     };
     const rate = {
       compass: [3.6, 1.1], cores: [4.5, 0.9], prompt: [7, 3], title: [1, 1],
       hint: [1.2, 3], notice: [6, 2], keys: [1.6, 0.8], lock: [1.8, 1.6],
       weapon: [8, 1.6], reticle: [12, 9], wanted: [5, 1.0], skin: [9, 5],
+      ride: [5, 1.4], threat: [9, 0.8], garage: [11, 9], gunsmith: [11, 9],
+      goal: [3, 1.2],
     };
     for (const k in this.a) {
       const t = target[k];
@@ -459,6 +498,27 @@ export class HUD {
       this._promptT = 0.3;
       return;
     }
+    const bench = this._garage && this._garage.nearest ? this._garage.nearest() : null;
+    if (bench && ctx.player.mode === 'onFoot') {
+      const scrap = (ctx.get('loot') || { inventory: {} }).inventory.scrap || 0;
+      this._prompt = { key: 'E', label: `Work on the bike  ·  ${scrap} scrap` };
+      this._promptT = 0.3;
+      return;
+    }
+    const roads = ctx.get('roads');
+    const pump = roads && roads.nearestStation ? roads.nearestStation() : null;
+    if (pump && ctx.player.mode === 'onFoot') {
+      this._prompt = { key: 'E', label: `Refuel  ·  ${pump.tanks} left` };
+      this._promptT = 0.3;
+      return;
+    }
+    const loot = ctx.get('loot');
+    const stash = loot && loot.nearest ? loot.nearest() : null;
+    if (stash) {
+      this._prompt = { key: 'E', label: stash.kind.label };
+      this._promptT = 0.3;
+      return;
+    }
     if (pl && pl.carcass) {
       this._prompt = { key: 'E', label: `Skin ${pl.carcass.species}` };
       this._promptT = 0.3;
@@ -469,8 +529,8 @@ export class HUD {
       // furniture, and furniture is exactly what this HUD is trying not to be.
       if ((ctx.player.speed01 || 0) < 0.06) best = { key: 'E', label: 'Dismount' };
     } else {
-      const horse = ctx.get('horse');
-      if (horse && horse.state) consider(horse.state.position, 'E', 'Mount', MOUNT_RANGE);
+      const bike = ctx.get('bike');
+      if (bike && bike.state) consider(bike.state.position, 'E', 'Ride', MOUNT_RANGE);
       const fire = ctx.poi.get('camp_fire');
       if (fire) consider(fire.pos || fire, 'E', 'Warm yourself', 4.2);
     }
@@ -536,6 +596,11 @@ export class HUD {
     if (this.a.reticle > 0.004) this._drawReticle(c, W, H, s, this.a.reticle * G);
     if (this.a.weapon > 0.004) this._drawWeapon(c, W, H, s, this.a.weapon * G);
     if (this.a.cores > 0.004) this._drawCores(c, W, H, s, this.a.cores * G);
+    if (this.a.ride > 0.004) this._drawRide(c, W, H, s, this.a.ride * G);
+    if (this.a.threat > 0.004) this._drawThreat(c, W, H, s, this.a.threat * G);
+    if (this.a.goal > 0.004) this._drawGoal(c, W, H, s, this.a.goal * G);
+    if (this.a.garage > 0.004) this._drawGarage(c, W, H, s, this.a.garage * G);
+    if (this.a.gunsmith > 0.004) this._drawGunsmith(c, W, H, s, this.a.gunsmith * G);
     if (this.a.title > 0.004) this._drawTitle(c, W, H, s, this.a.title * G);
     /* The three centred lines are a stack, not three fixed positions. Each one
      * that draws pushes the ceiling up for the next, so when the control hints
@@ -804,15 +869,16 @@ export class HUD {
      */
     const rows = mounted
       ? [
-        [['W', 'RIDE', 'ride'], ['SHIFT', 'SPUR ON', 'spur'],
-          ['A D', 'REIN', 'rein'], ['E', 'DISMOUNT', 'mount']],
-        [['RMB', 'AIM', 'aim'], ['LMB', 'FIRE', 'fire'], ['R', 'RELOAD', 'reload']],
+        [['W', 'THROTTLE', 'ride'], ['SHIFT', 'OPEN IT UP', 'spur'],
+          ['A D', 'STEER', 'rein'], ['S', 'BRAKE', 'brake']],
+        [['E', 'GET OFF', 'mount'], ['L', 'HEADLIGHT', 'light'],
+          ['F', 'FUEL UP', 'fuel']],
       ]
       : [
         [['W A S D', 'MOVE', 'move'], ['SHIFT', 'RUN', 'run'],
-          ['CTRL', 'CROUCH', 'crouch'], ['E', 'MOUNT', 'mount']],
+          ['CTRL', 'CROUCH', 'crouch'], ['E', 'RIDE / LOOT', 'mount']],
         [['RMB', 'AIM', 'aim'], ['LMB', 'FIRE', 'fire'],
-          ['SHIFT', 'HOLD BREATH', 'breath'], ['R', 'RELOAD', 'reload']],
+          ['R', 'RELOAD', 'reload'], ['Q', 'BANDAGE', 'meds']],
       ];
     /* Each hint fades on its own once its control has been used, and the rows
      * are bottom-anchored so the survivors slide down into the vacancy rather
@@ -1188,6 +1254,248 @@ export class HUD {
     const x0 = W - 42 * s - gap;
     this._arc(c, x0, y, r, this.health, BLOOD, A, s);
     this._arc(c, x0 + gap, y, r, this.stamina, GOLD, A, s);
+  }
+
+  /**
+   * THE MACHINE.
+   *
+   * A fuel arc in the same language as the health and stamina arcs — one more
+   * open ring in the same row, so it reads as another thing about your
+   * condition rather than as a vehicle dashboard bolted onto the corner. Speed
+   * and gear sit beside it in small caps.
+   *
+   * The arc goes red below a fifth of a tank and starts breathing below a
+   * tenth. That is the only alarm in this HUD, and it is spent here because
+   * running dry is the one failure state in the game that is entirely
+   * preventable and entirely your own fault.
+   */
+  _drawRide(c, W, H, s, A) {
+    const bike = this.ctx.get('bike');
+    if (!bike || !bike.status) return;
+    const st = bike.status();
+    const r = 16 * s;
+    const gap = 50 * s;
+    const y = H - 46 * s;
+    const x = W - 42 * s - gap * 2;
+
+    let colour = GOLD;
+    let a = A;
+    if (st.fuel < 0.20) {
+      colour = BLOOD;
+      if (st.fuel < 0.10) a *= 0.55 + 0.45 * Math.abs(Math.sin(this._elapsed * 3.4));
+    }
+    this._arc(c, x, y, r, st.fuel, colour, a, s);
+    this._text(c, 'FUEL', x, y + r + 11 * s, {
+      size: 7.5 * s, colour: INK_DIM, alpha: 0.5 * A, align: 'center', track: 0.16,
+    });
+
+    /* Speed and gear. Big number, small unit — a rider glances at this, they
+       do not read it. */
+    const kph = Math.max(0, Math.round(st.speedKph));
+    this._text(c, String(kph), x - gap * 0.92, y + 5 * s, {
+      size: 19 * s, colour: INK, alpha: 0.78 * A, align: 'center',
+    });
+    this._text(c, st.running ? `KM/H · ${st.gear}` : 'STALLED', x - gap * 0.92, y + 18 * s, {
+      size: 7.5 * s, colour: st.running ? INK_DIM : BLOOD,
+      alpha: 0.55 * A, align: 'center', track: 0.14,
+    });
+
+    /*
+     * ON-ROAD TELL. One short rule under the speed, present only while there is
+     * road under the wheels. It exists because the road's benefit is mostly
+     * GRIP, which the player feels but cannot see — at night, in rain, on a
+     * gravel spur that looks like the ground beside it, there is otherwise no
+     * confirmation that the thing you are riding on is the thing you were
+     * looking for.
+     */
+    const on = st.onRoad || 0;
+    if (on > 0.03) {
+      const bw = 44 * s, bx = x - gap * 0.92 - bw * 0.5, by = y + 26 * s;
+      this._hairline(c, bx, by, bx + bw * on, by, GOLD, 0.55 * on * A, Math.max(1, 1.6 * s));
+    }
+  }
+
+  /**
+   * HOW MANY ARE COMING.
+   *
+   * Deliberately imprecise. It shows a count only up to three and then stops
+   * counting, because the difference between four and eleven is not a number a
+   * player can act on — the decision at that point is "leave", and it is the
+   * same decision either way. What it does show precisely is how loud you are
+   * being, which IS actionable: shut the engine off, or crouch.
+   */
+  _drawThreat(c, W, H, s, A) {
+    const n = this._hunting || 0;
+    const g = this._engaged || 0;
+    const x = W * 0.5;
+    const y = 54 * s;
+    /*
+     * BEING SHOT AT OUTRANKS BEING CHASED, and the wording has to say WHICH,
+     * because the two want opposite things from the player. Riven: ride, or go
+     * quiet. Cordon: get behind something — you cannot outrun a rifle. A single
+     * generic "threat" indicator would be worse than none, since it would
+     * prompt the response that gets you killed half the time.
+     */
+    const label = g > 0
+      ? (g > 2 ? 'UNDER FIRE' : 'TAKING FIRE')
+      : (n === 0 ? 'LOST YOU' : (n > 3 ? 'SWARM' : (n > 1 ? 'HUNTED' : 'SEEN')));
+    const live = g > 0 ? g : n;
+    const pulse = live > 0
+      ? 0.72 + 0.28 * Math.abs(Math.sin(this._elapsed * (live > 2 ? 5.2 : 2.6))) : 0.5;
+    this._text(c, label, x, y, {
+      size: 12 * s, colour: live > 0 ? HIT_RED : INK_DIM,
+      alpha: (live > 2 ? 0.92 : 0.78) * pulse * A, align: 'center', track: 0.30,
+    });
+    /* Tally marks, not a number: three strokes read faster than a digit and
+       stop at three, which is the point. */
+    if (live > 0) {
+      const marks = Math.min(3, live);
+      const wS = 5 * s;
+      for (let i = 0; i < marks; i++) {
+        const mx = x - (marks - 1) * wS + i * wS * 2;
+        this._hairline(c, mx, y + 7 * s, mx, y + 14 * s, HIT_RED, 0.7 * pulse * A, Math.max(1, 1.6 * s));
+      }
+    }
+    /* Noise meter — the one number worth being precise about. */
+    const noise = Math.min(1, (this._noise || 0) / 14);
+    if (noise > 0.02) {
+      const bw = 74 * s, bx = x - bw * 0.5, by = y + 21 * s;
+      this._hairline(c, bx, by, bx + bw, by, INK_DIM, 0.20 * A, Math.max(1, 1.4 * s));
+      this._hairline(c, bx, by, bx + bw * noise, by,
+        noise > 0.4 ? HIT_ORANGE : INK, 0.68 * A, Math.max(1, 1.8 * s));
+    }
+  }
+
+  /**
+   * THE OBJECTIVE, and it is the only one the game has.
+   *
+   * Deliberately not a quest log and not a waypoint arrow: one line, only near
+   * the compound, saying how many are left. That number is the whole objective
+   * — nobody needs to be told to shoot them — and it doubles as the readiness
+   * assessment the game refuses to enforce. A player who rides up, reads
+   * ELEVEN LEFT with nine rounds in their pack, and turns round has understood
+   * everything the design wanted them to understand, without a gate or a level
+   * requirement telling them so.
+   */
+  _drawGoal(c, W, H, s, A) {
+    const g = this._goal;
+    if (!g) return;
+    const y = 86 * s;
+    if (g.cleared) {
+      this._text(c, 'THE GATE IS OPEN', W * 0.5, y, {
+        size: 12 * s, colour: GOLD, alpha: 0.88 * A, align: 'center', track: 0.30,
+      });
+      this._text(c, 'RIDE OUT', W * 0.5, y + 14 * s, {
+        size: 8.5 * s, colour: INK_DIM, alpha: 0.60 * A, align: 'center', track: 0.24,
+      });
+      return;
+    }
+    this._text(c, 'THE PASS', W * 0.5, y, {
+      size: 11 * s, colour: INK, alpha: 0.72 * A, align: 'center', track: 0.30,
+    });
+    const n = g.defenders | 0;
+    this._text(c, n > 0 ? `${n} HOLDING IT` : 'QUIET', W * 0.5, y + 14 * s, {
+      size: 9 * s, colour: n > 6 ? BLOOD : INK_DIM,
+      alpha: 0.66 * A, align: 'center', track: 0.22,
+    });
+  }
+
+  /**
+   * THE WORKBENCH.
+   *
+   * A list, not a tree. Five rows, each with its level as pips, what it does in
+   * four words, and what the next one costs — and a number key to buy it. No
+   * cursor, no tabs, no confirmation: this panel is read at a glance by someone
+   * who is probably being approached, and every extra interaction between
+   * "I want that" and having it is a second spent looking at a menu instead of
+   * at the treeline.
+   *
+   * Rows you cannot afford stay legible rather than greying out, because the
+   * thing a player most needs from a shop they cannot use yet is to know what
+   * to go and get.
+   */
+  _drawGarage(c, W, H, s, A) {
+    const G = this._garage;
+    if (!G) return;
+    this._drawBench(c, W, H, s, A, G, TRACK_KEYS, TRACKS, 'THE BIKE');
+  }
+
+  _drawGunsmith(c, W, H, s, A) {
+    const G = this.ctx.get('gunsmith');
+    if (!G) return;
+    this._drawBench(c, W, H, s, A, G, GUN_KEYS, GUN_TRACKS, 'THE RIFLE');
+  }
+
+  /**
+   * One workbench panel, drawn twice.
+   *
+   * The bike bench and the vice are the same interaction with a different track
+   * table, so they are the same panel with a different title. Duplicating sixty
+   * lines of layout would have guaranteed the two drifted apart the first time
+   * either was touched, and the player would have had to learn two panels that
+   * do exactly the same thing.
+   */
+  _drawBench(c, W, H, s, A, G, KEYS, TABLE, title) {
+    const loot = this.ctx.get('loot');
+    const scrap = loot ? (loot.inventory.scrap || 0) : 0;
+
+    const rowH = 30 * s;
+    const panelW = Math.min(W * 0.72, 460 * s);
+    const panelH = rowH * KEYS.length + 74 * s;
+    const x0 = (W - panelW) * 0.5;
+    const y0 = (H - panelH) * 0.5;
+
+    this._shade(c, W * 0.5, H * 0.5, panelW * 0.62, panelH * 0.62, 0.52 * A);
+
+    this._text(c, title, W * 0.5, y0 + 24 * s, {
+      size: 15 * s, colour: INK, alpha: 0.92 * A, align: 'center', track: 0.34,
+    });
+    this._text(c, `${scrap} SCRAP`, W * 0.5, y0 + 41 * s, {
+      size: 9.5 * s, colour: GOLD, alpha: 0.80 * A, align: 'center', track: 0.22,
+    });
+    this._hairline(c, x0 + 18 * s, y0 + 50 * s, x0 + panelW - 18 * s, y0 + 50 * s,
+      INK_DIM, 0.22 * A, Math.max(1, 1.2 * s));
+
+    for (let i = 0; i < KEYS.length; i++) {
+      const k = KEYS[i];
+      const T = TABLE[k];
+      const lvl = G.levels[k] || 0;
+      const cost = G.costOf(k);
+      const y = y0 + 70 * s + i * rowH;
+      const maxed = cost == null;
+      const afford = !maxed && scrap >= cost;
+
+      /* The number you press, boxed, so the row reads as actionable. */
+      this._text(c, String(i + 1), x0 + 26 * s, y, {
+        size: 12 * s, colour: afford ? GOLD : INK_DIM,
+        alpha: (afford ? 0.95 : 0.45) * A, align: 'center',
+      });
+      this._text(c, T.label.toUpperCase(), x0 + 48 * s, y, {
+        size: 11.5 * s, colour: INK, alpha: 0.88 * A, track: 0.16,
+      });
+      this._text(c, T.blurb, x0 + 48 * s, y + 11 * s, {
+        size: 8.5 * s, colour: INK_DIM, alpha: 0.52 * A, track: 0.10,
+      });
+
+      /* Level as pips — three filled squares reads as "done" far faster than
+         the word MAX does. */
+      const pips = T.mult.length - 1;
+      for (let p = 0; p < pips; p++) {
+        const px = x0 + panelW - 118 * s + p * 13 * s;
+        const on = p < lvl;
+        c.fillStyle = rgba(on ? GOLD : INK_DIM, (on ? 0.85 : 0.22) * A);
+        c.fillRect(px, y - 7 * s, 8 * s, 8 * s);
+      }
+
+      this._text(c, maxed ? '—' : String(cost), x0 + panelW - 34 * s, y, {
+        size: 11 * s, colour: maxed ? INK_DIM : (afford ? GOLD : BLOOD),
+        alpha: (maxed ? 0.4 : 0.85) * A, align: 'center',
+      });
+    }
+
+    this._text(c, 'E  CLOSE', W * 0.5, y0 + panelH - 14 * s, {
+      size: 9 * s, colour: INK_DIM, alpha: 0.55 * A, align: 'center', track: 0.24,
+    });
   }
 
   _arc(c, x, y, r, v, colour, A, s) {

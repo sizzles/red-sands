@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Frame } from './Builder.js';
+import { Frame } from '../build/Builder.js';
 
 /**
  * Campfire.

@@ -1,17 +1,24 @@
 {
-  "name": "red-sands",
+  "name": "broken-road",
   "version": "0.1.0",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
+    "preview:lan": "vite preview --host 0.0.0.0",
     "capture": "node tools/capture.mjs --out shots/latest --w 1920 --h 1080",
     "capture:fast": "node tools/capture.mjs --fast --out shots/latest",
     "smoke": "node tools/capture.mjs --smoke --fast --out shots/latest",
     "metrics": "python3 tools/metrics.py --shots shots/latest",
     "motion": "node tools/capture.mjs --motion --fast --out shots/motion --frames 24 && python3 tools/motion.py --dir shots/motion",
-    "scout": "node tools/scout.mjs --out shots/scout --n 40 --worst 6"
+    "scout": "node tools/scout.mjs --out shots/scout --n 40 --worst 6",
+    "conform": "node tools/conformance/run.mjs",
+    "conform:write": "node tools/conformance/run.mjs --write",
+    "conform:list": "node tools/conformance/run.mjs --list",
+    "bike:audit": "node tools/bike/audit.mjs",
+    "bike:check": "node tools/bike/audit.mjs --strict"
   },
   "keywords": [
     "threejs",
@@ -20,13 +27,14 @@
     "open-world",
     "procedural-generation",
     "game",
-    "western",
+    "survival",
+    "motorcycle",
     "proceduralcontent",
     "shaders",
     "glsl"
   ],
   "license": "MIT",
-  "description": "An open-world western that runs entirely in the browser. Procedurally generated terrain, sky, weather, town and audio — no art assets. three.js + WebGL2.",
+  "description": "An open-world survival ride through the Cascade Range, entirely in the browser. Procedurally generated volcanic terrain, weather, infected, a motorcycle and audio \u2014 no art assets. three.js + WebGL2.",
   "dependencies": {
     "three": "^0.185.1"
   },
@@ -36,12 +44,12 @@
   },
   "type": "module",
   "private": false,
-  "homepage": "https://github.com/gillworks/red-sands#readme",
+  "homepage": "https://github.com/sizzles/red-sands#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gillworks/red-sands.git"
+    "url": "git+https://github.com/sizzles/red-sands.git"
   },
   "bugs": {
-    "url": "https://github.com/gillworks/red-sands/issues"
+    "url": "https://github.com/sizzles/red-sands/issues"
   }
 }

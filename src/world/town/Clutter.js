@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Frame } from './Builder.js';
+import { Frame } from '../build/Builder.js';
 
 /**
  * Clutter — the stuff a working town accumulates, and the water it stands in.

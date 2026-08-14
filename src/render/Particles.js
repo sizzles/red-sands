@@ -615,6 +615,13 @@ export class Particles {
       }
     }
 
+    /* A launch velocity ADDED to whatever the type chose for itself, so a
+       caller can throw a puff without having to restate what a puff is. This
+       is what separates a spinning wheel's roost from a footfall: same dust,
+       thrown along a direction at a speed. */
+    if (opts.vel) {
+      P.vx[i3] += opts.vel.x; P.vx[i3 + 1] += opts.vel.y; P.vx[i3 + 2] += opts.vel.z;
+    }
     if (opts.color) { const c = opts.color; cr = c.r; cg = c.g; cb = c.b; }
     P.life[i] = P.maxLife[i];
     P.aParams[i4] = P.s0[i];
@@ -696,10 +703,15 @@ export class Particles {
       }
     }
 
-    /* dust kicked up by movement over dry ground */
+    /* Dust kicked up by movement over dry ground: boots, and hooves.
+       NOT the bike — a machine throwing dirt off one spinning wheel is a
+       directional thing and Bike.js emits its own, so this omnidirectional
+       puff would only wash it out. */
     const p = this.ctx.player;
+    const bike = this.ctx.get ? this.ctx.get('bike') : null;
+    const onBike = !!(bike && bike.mounted);
     const spd = p ? (p.speed01 || 0) : 0;
-    if (spd > 0.15 && (env.wetness || 0) < 0.45) {
+    if (!onBike && spd > 0.15 && (env.wetness || 0) < 0.45) {
       this._acc.hoof = (this._acc.hoof || 0) + dt * spd * (p.mode === 'mounted' ? 34 : 12);
       let n = Math.min(8, this._acc.hoof | 0);
       this._acc.hoof -= n;

@@ -1127,6 +1127,122 @@ export function makeSaguaro(seed, { lod = 0 } = {}) {
 /* ------------------------------------------------------------------ bones */
 
 /** Sun-bleached cow skull with horns. Small, foreground dressing. */
+/**
+ * COLUMNAR BASALT.
+ *
+ * The signature rock of a flood-basalt province, and the reason it looks like
+ * masonry is that it IS a crystallisation pattern: as a thick lava sheet cools
+ * it contracts, and contraction in a plane relieves itself as a network of
+ * cracks meeting at 120°. That gives hexagons — the same reason a mud pan
+ * cracks the way it does — and the cracks then propagate DOWN the cooling
+ * front, extruding those hexagons into vertical columns.
+ *
+ * Three consequences, and getting them right is the whole difference between
+ * this and a bundle of pencils:
+ *
+ *   1. THE COLUMNS TESSELLATE. They are not a pile of separate rocks with gaps;
+ *      they are one block that has cracked, so neighbours share faces and the
+ *      packing is a hex lattice with only a joint's width between them.
+ *   2. THE TOPS ARE BROKEN, NOT CUT. Columns fail at horizontal cross-joints,
+ *      so a colonnade's top is a stepped, irregular surface at a few discrete
+ *      heights — never a smooth envelope, and never a flat one.
+ *   3. THEY ARE PERPENDICULAR TO THE COOLING SURFACE. On a flat flow that means
+ *      vertical; near an edge it means fanned. A slight shared tilt across the
+ *      cluster reads as geology, while independent per-column tilt reads as
+ *      scattered junk.
+ *
+ * Built about the origin with the base at y = 0 so the scatter's seating pass
+ * can plant it like any other rock.
+ */
+export function makeBasaltColumns(seed, { tall = false } = {}) {
+  const rnd = streamRng(seed * 2246822519 + 7);
+  const b = new Builder();
+
+  /* Column radius (centre to flat, i.e. the apothem) and how many rings of the
+     hex lattice to fill. A real colonnade column is 0.3–1.2 m across. */
+  const R = 0.34 + rnd() * 0.30;
+  const rings = tall ? 2 : 1 + ((rnd() * 2) | 0);
+  const H0 = tall ? 6.5 + rnd() * 5.5 : 2.2 + rnd() * 2.6;
+
+  /* The shared cooling direction. Small, and the same for every column here. */
+  const tiltA = rnd() * 6.2831;
+  const tiltK = (tall ? 0.02 : 0.05) + rnd() * 0.05;
+  const tx = Math.cos(tiltA) * tiltK, tz = Math.sin(tiltA) * tiltK;
+
+  /* Cross-joint ladder: the discrete heights columns actually break at. */
+  const jointN = 2 + ((rnd() * 3) | 0);
+  const joints = [];
+  for (let i = 0; i < jointN; i++) joints.push(0.42 + rnd() * 0.72);
+
+  /* Hex lattice. Axial coordinates -> world, spacing = 2 × apothem plus a
+     hairline joint, so neighbours very nearly share a face. */
+  const S = R * 2 * 1.035;
+  for (let q = -rings; q <= rings; q++) {
+    for (let rr = -rings; rr <= rings; rr++) {
+      if (Math.abs(q + rr) > rings) continue;              // hex-shaped cluster
+      const cx = S * (q + rr * 0.5);
+      const cz = S * rr * 0.8660254;
+      /* Erode the outside of the cluster: edge columns have fallen away. */
+      const edge = Math.max(Math.abs(q), Math.abs(rr), Math.abs(q + rr)) / rings;
+      if (rnd() < edge * 0.45) continue;
+
+      const h = H0 * joints[(rnd() * joints.length) | 0]
+        * (1 - edge * (0.10 + rnd() * 0.35));
+      if (h < 0.35) continue;
+
+      /* Per-column rotation about its own axis: the hexagons are not all
+         clocked alike, which is what stops the top reading as a printed
+         honeycomb. Real jointing is only approximately regular, so the radius
+         wobbles per side too. */
+      const clock = rnd() * 1.0472;                        // within one 60° sector
+      const rj = [];
+      for (let k = 0; k < 6; k++) rj.push(R * (0.90 + rnd() * 0.16));
+
+      const base = b.vertexCount;
+      /* Bottom ring, buried a little so no column can float. */
+      for (let k = 0; k < 6; k++) {
+        const a = clock + (k / 6) * 6.2831;
+        const px = cx + Math.cos(a) * rj[k];
+        const pz = cz + Math.sin(a) * rj[k];
+        b.vertex(px, -0.25, pz, Math.cos(a), 0, Math.sin(a), k / 6, 0, 0.75);
+      }
+      /* Top ring, displaced by the shared tilt. The top face is tipped on its
+         own axis as well, because a fracture surface is never level. */
+      const tipA = rnd() * 6.2831, tipK = R * (0.10 + rnd() * 0.30);
+      for (let k = 0; k < 6; k++) {
+        const a = clock + (k / 6) * 6.2831;
+        const px = cx + Math.cos(a) * rj[k] + tx * h;
+        const pz = cz + Math.sin(a) * rj[k] + tz * h;
+        const py = h + Math.cos(a - tipA) * tipK;
+        /* NEGATIVE aCav on the top rim = a fresh convex arris, which the rock
+           material reads as chipping and bleaching along the break. */
+        b.vertex(px, py, pz, Math.cos(a), 0, Math.sin(a), k / 6, h * 0.5, -0.4);
+      }
+      /* Sides. The vertical joints between columns are the deepest crevices in
+         the whole formation, so the side faces carry high cavity. */
+      for (let k = 0; k < 6; k++) {
+        const k2 = (k + 1) % 6;
+        b.quad(base + k, base + k2, base + 6 + k2, base + 6 + k);
+      }
+      /* Top cap as a fan. */
+      const capC = b.vertex(
+        cx + tx * h, h + 0.02, cz + tz * h, 0, 1, 0, 0.5, 0.5, -0.2);
+      for (let k = 0; k < 6; k++) {
+        b.tri(base + 6 + k, base + 6 + ((k + 1) % 6), capC);
+      }
+    }
+  }
+  if (!b.vertexCount) {
+    /* Every column got eroded away — hand back something rather than an empty
+       geometry, which would break the batch's bounding sphere. */
+    return makeRock(seed, { detail: 1, family: 'blocky' });
+  }
+  /* Deliberately NOT smoothNormals(): the faces of a basalt column are flat and
+     meet at hard arrises, and averaging the normals across a 120° joint is what
+     would turn a colonnade back into a bundle of smooth tubes. */
+  return b.toGeometry('basalt');
+}
+
 export function makeSkull(seed) {
   const rnd = streamRng(seed * 12289 + 31);
   const b = new Builder();

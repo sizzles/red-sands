@@ -8,6 +8,7 @@ import { Weather } from './sim/Weather.js';
 import { Terrain } from './world/Terrain.js';
 import { Water } from './render/Water.js';
 import { Vegetation } from './world/Vegetation.js';
+import { Roads } from './world/Roads.js';
 import { Scatter } from './world/Scatter.js';
 import { Town } from './world/Town.js';
 import { Lighting } from './render/Lighting.js';
@@ -16,12 +17,21 @@ import { Clouds } from './render/Clouds.js';
 import { Particles } from './render/Particles.js';
 import { Physics } from './sim/Physics.js';
 import { Player } from './player/Player.js';
-import { Horse } from './player/Horse.js';
+import { Bike } from './player/Bike.js';
 import { Wildlife } from './sim/Wildlife.js';
+import { Riven } from './sim/Riven.js';
+import { Cordon } from './sim/Cordon.js';
+import { Garage } from './sim/Garage.js';
+import { Gunsmith } from './sim/Gunsmith.js';
+import { Compound } from './sim/Compound.js';
+import { CompoundSite } from './sim/CompoundSite.js';
+import { Loot } from './sim/Loot.js';
 import { CameraRig } from './player/CameraRig.js';
 import { PostFX } from './render/PostFX.js';
 import { Audio } from './audio/Audio.js';
+import { WorldMap } from './ui/WorldMap.js';
 import { HUD } from './ui/HUD.js';
+import { TouchControls } from './ui/TouchControls.js';
 
 const params = new URLSearchParams(location.search);
 const CAPTURE = params.get('capture') === '1';
@@ -42,12 +52,20 @@ const S = [
   [new Weather(ctx),     10],
   [new Physics(ctx),     70],
   [new Player(ctx),      75],
-  [new Horse(ctx),       80],
+  [new Bike(ctx),        80],
   [new Wildlife(ctx),    85],
+  [new Riven(ctx),       86],
+  [new Cordon(ctx),      87],
+  [new Loot(ctx),        88],
+  [new Garage(ctx),      89],
+  [new Gunsmith(ctx),    90],
+  [new CompoundSite(ctx), 36],
+  [new Compound(ctx),    91],
   [new CameraRig(ctx),   90],
   [new ProcTextures(ctx), 1],
   [new Terrain(ctx),     20],
   [new Water(ctx),       30],
+  [new Roads(ctx),       35],
   [new Vegetation(ctx),  40],
   [new Scatter(ctx),     45],
   [new Town(ctx),        50],
@@ -57,7 +75,9 @@ const S = [
   [new Particles(ctx),   60],
   [new PostFX(ctx),      95],
   [new Audio(ctx),       97],
+  [new WorldMap(ctx),    98],
   [new HUD(ctx),         99],
+  [new TouchControls(ctx), 100],
 ];
 for (const [sys, initOrder] of S) engine.add(sys, { initOrder });
 
@@ -69,13 +89,17 @@ const LABELS = {
   procTextures: 'weaving materials', timeOfDay: 'placing the sun',
   weather: 'stirring the air', terrain: 'raising the land',
   water: 'cutting the rivers', vegetation: 'sowing the grass',
-  scatter: 'strewing the stones', town: 'building the town',
+  roads: 'laying the road', scatter: 'strewing the stones', town: 'building the town',
   lighting: 'hanging the light', sky: 'painting the sky',
   clouds: 'gathering cloud', particles: 'seeding dust',
-  physics: 'setting the rules', player: 'waking the rider',
-  horse: 'saddling up', wildlife: 'releasing the herds',
+  physics: 'setting the rules', player: 'waking the drifter',
+  bike: 'kicking it over', wildlife: 'releasing the herds',
+  riven: 'listening for the horde', cordon: 'manning the checkpoints',
+  loot: 'hiding the caches', garage: 'laying out the tools',
+  gunsmith: 'oiling the rifle',
+  compoundSite: 'closing the pass', compound: 'walling the pass',
   camera: 'framing the shot', postfx: 'grading the film',
-  audio: 'tuning the wind', hud: 'final touches', ready: 'ready',
+  audio: 'tuning the wind', worldMap: 'folding the map', hud: 'final touches', touch: 'final touches', ready: 'ready',
 };
 
 await engine.initAll((p, id) => {
@@ -145,9 +169,15 @@ window.__GAME = {
     return true;
   },
 
+  /** Where generation time went, most expensive first. */
+  initStats() {
+    return { totalMs: engine.initTotalMs, systems: engine.initProfile(14) };
+  },
+
   stats() {
     const info = engine.renderer.info;
     return {
+      initTotalMs: engine.initTotalMs,
       drawCalls: info.render.calls,
       triangles: info.render.triangles,
       programs: info.programs ? info.programs.length : 0,
@@ -168,5 +198,9 @@ window.__GAME = {
 };
 
 if (import.meta.env && import.meta.env.DEV) {
-  console.log('[RED SANDS] booted at quality:', quality.name);
+  console.log('[BROKEN ROAD] booted at quality:', quality.name,
+    `in ${(engine.initTotalMs / 1000).toFixed(1)}s`);
+  /* The five that actually cost something. Generation is the longest wait this
+     game asks for, so it should say where it went without being asked. */
+  console.table(engine.initProfile(5).map(([id, ms]) => ({ system: id, ms })));
 }

@@ -1,18 +1,16 @@
 <div align="center">
 
-<img src="docs/media/hero.jpg" alt="Golden hour over the frontier — sandstone buttes and a mountain range receding into layered haze, seen over a dark treeline" width="100%">
+# BROKEN ROAD
 
-# RED SANDS
+**An open-world survival ride that runs entirely in a browser tab.**
 
-**An open-world western that runs entirely in a browser tab.**
-
-8 km² of eroded frontier · physically-based sky · volumetric weather · horses, hunting and a town
+8 km² of the Cascade Range · glaciated volcanoes · endless rain · a motorcycle you have to keep fuelled
 No downloads. No plugins. No art files — every texture, mesh and sound is generated at runtime.
 
 [![three.js](https://img.shields.io/badge/three.js-r185-000?logo=three.js&logoColor=white)](https://threejs.org)
 [![WebGL2](https://img.shields.io/badge/WebGL-2.0-990000)](https://developer.mozilla.org/docs/Web/API/WebGL2RenderingContext)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-c8a45c)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-5c8374)](LICENSE)
 
 </div>
 
@@ -20,23 +18,15 @@ No downloads. No plugins. No art files — every texture, mesh and sound is gene
 
 ## What this is
 
-A procedurally generated open world — terrain, vegetation, weather, town, animals,
-audio — rendered in WebGL2 and shipped as a **~480 KB brotli** bundle. There is not a
-single `.png`, `.gltf` or `.wav` in the repository. The mountains are hydraulically
-eroded at load, the sky is a physical scattering integral, the rifle report is
-synthesised from noise, and the echo you hear after it is computed by marching the
-actual heightfield for reflectors.
+A procedurally generated open world — volcanic terrain, conifer forest, weather, the Riven,
+audio — rendered in WebGL2. There is not a single `.png`, `.gltf` or `.wav` in the
+repository. The mountains are real stratovolcano profiles with hydraulically eroded
+flanks, the sky is a physical scattering integral, the engine note is four oscillators
+and a resonant filter, and the rain has been falling for about as long as anyone can
+remember.
 
-<table>
-<tr>
-<td width="50%"><img src="docs/media/town.jpg" alt="The town's main street at golden hour, false-front buildings and boardwalks receding toward mountains"></td>
-<td width="50%"><img src="docs/media/rider.jpg" alt="Third-person view of the rider and horse standing in prairie grass with wildflowers"></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/media/storm.jpg" alt="A storm front over open plains, dark cloud base and rain"></td>
-<td width="50%"><img src="docs/media/night.jpg" alt="Night camp lit by firelight under a star field"></td>
-</tr>
-</table>
+It began life as [an open-world western](#lineage) and was converted. Most of the
+renderer survived that intact; almost none of the world did.
 
 ## Play
 
@@ -45,154 +35,358 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. Click to capture the pointer.
+Open <http://localhost:5173>. Click to capture the pointer. On a phone, just open it —
+touch controls appear on their own.
 
 | | |
 |---|---|
-| **W A S D** | move |
-| **Shift** | run / gallop |
-| **Ctrl** | crouch (quieter — animals hear you) |
-| **E** | mount / dismount · skin a carcass |
+| **W A S D** | move · on the bike, throttle and steering |
+| **Shift** | run · open the throttle |
+| **S** *(riding)* | brake |
+| **Ctrl** | crouch — and crouching is how you stay alive |
+| **E** | get on the bike · loot a stash · skin a carcass |
+| **L** | headlight |
+| **F** | pour a fuel can into the tank |
+| **E** *(at a workbench)* | open the bike panel — **1**–**5** buy upgrades |
+| **Q** | use a bandage |
 | **Right mouse** | raise the rifle |
-| **Shift** *(aiming)* | hold breath to steady |
 | **Left mouse** | fire |
 | **R** | reload |
 
-Add `?quality=low|medium|high|ultra` to force a preset.
+Add `?quality=mobile|low|medium|high|ultra` to force a preset, or `?touch=1` to see the
+touch controls on a desktop.
+
+## The road
+
+Ten routes in three classes, and the classes are not three widths of the same
+road — they route differently because they are held to different gradients. A
+state route is capped at 7.5%, a logging spur at 15%, a two-track at 26%, which
+is roughly what real survey standards allow. The highway therefore has to go
+round the hill the two-track goes over.
+
+Routing is A* over a cost grid, and it is the second router written for this. The
+first was greedy least-effort descent — step, fan out candidate headings, take
+the best — and it was replaced on evidence: measured over the finished network it
+gave highways a mean gradient of **15.9%** with pitches over 100%, and 44% of one
+route steeper than 12%. A greedy walker facing a slope has no candidate that
+avoids it and takes the least-bad one; worse, it structurally cannot switchback,
+because reversing direction is never a locally good move. A* has neither blind
+spot — it will send a road two kilometres sideways and back if that is genuinely
+cheaper, which is what a survey does. The same network now measures **4.5 / 7.8 /
+7.0%** mean on its three highways.
+
+The cost function is `length · (1 + 9·(grade/maxGrade)²)`, quadratic because
+earthwork goes as the square of the cut, with a ×24 penalty rather than an
+infinity beyond the class limit: a road that breaks its own standard for eighty
+metres is a real road, one that cannot be built at all is a crash.
+
+**On the road the bike is quicker, but grip is the real prize.** Top speed rises
+14%; grip rises 20% *and* the loose-surface penalty vanishes, which off-road can
+drag drive down to 0.35 on wet pumice. The suspension also stops working, which
+is the part you actually feel. Roads clear their own corridor — timber felled
+7.5 m either side, sward thinned — so in the trees a road reads as a cut long
+before you can see its surface.
+
+**Fuel stations** sit on the highways at roughly 1.1 km intervals, on the
+flattest ground within reach of the carriageway, and each holds three tanks that
+do not come back. The map is a slowly emptying resource, so the third hour is a
+longer ride than the first. Their pole signs carry the only saturated colour in
+the world, because from the saddle at 90 km/h in the rain the sign is the only
+part of a station you will ever spot in time to stop.
+
+## The loop
+
+```
+RIDE  (burn fuel, make noise)
+ └→ SCAVENGE stashes, take checkpoints         (fuel, ammo, scrap)
+     └→ UPGRADE the bike at a workbench         (range · quiet · speed · grip)
+         └→ reach further, hit richer targets
+             └→ THE PASS: the compound. One road out.
+```
+
+Three numbers pull against each other:
+
+- **Fuel.** A full tank is about four minutes of hard riding. Jerry cans are scattered
+  across the map at fixed positions, and there are never quite enough.
+- **Noise.** The Riven hunt by sound. Crouching puts you at `0.25`; walking is `1.0`;
+  the bike, with the throttle open, is `14` — fifty-six times louder. The thing that
+  lets you cover ground is the thing that tells everything in the valley where you are,
+  and shutting the engine off to push the last kilometre is a real decision because the
+  numbers make it real.
+- **Ammunition.** Every round you fire is one you had to find, and firing a rifle wakes
+  everything inside 220 metres. A gun is what you use when the plan has already failed.
+
+**Everything depletes one way.** Stations hold three tanks and never refill,
+stashes are looted once. The third hour is a longer ride than the first, and the
+garage is the only thing that pushes back — which is why it exists.
+
+### The garage
+
+Scrap buys five things, and each one feeds a system that already exists rather
+than raising a number in isolation:
+
+| | |
+|---|---|
+| **Tank** | further between stations — buys reach |
+| **Economy** | the same tank goes further — buys the *slope of the curve* |
+| **Baffles** | a quieter exhaust — buys **stealth** |
+| **Gearing** | top speed — deliberately the smallest effect |
+| **Tyres** | grip off-road — buys the ability to stop needing the Cordon's roads |
+
+Baffles are the interesting one. Every Riven perception test is keyed on `noise`,
+so this is the only upgrade that changes what the world does to *you* rather than
+what you can do to it. Measured: 14 stock at full throttle, 5.6 fully baffled, and
+2.4 at idle — a man sprinting. It never makes the bike quiet, and is not meant to;
+it makes rolling on a closed throttle a real option. Two of the five upgrades buy
+the ability to *avoid* content, which is on purpose.
+
+There is no experience system and there should not be. The player has no stats to
+raise, so a level would be a second progression track competing with the machine
+for the same scrap — and worse, XP pays you for kills, which argues the exact
+opposite of everything the noise model says.
+
+### The end
+
+The Cordon's own position sits at the head of the pass, built across the only road
+out of the valley. It is not gated on a level or a key: it is open from the first
+minute and will simply kill you. Readiness is measured the honest way — the fuel to
+get there and back, the ammo to get through, and how much bike you have bought. The
+HUD tells you how many are holding it and lets you decide.
+
+The gate opens when the yard is empty. Ride through and the game is over.
+
+And the Riven are invited: a dozen rifles firing in the open is the loudest thing
+that has ever happened in this valley, and every trigger pull alarms them at 260 m.
+Nobody scripted a third act — it arrives on its own, and the honest way to take the
+place may well be to start the fight and then leave.
+
+The cruelty is emergent rather than authored: the model that decides where a nest goes
+and the model that decides where a stash goes are *both* "somewhere sheltered a person
+would have used", so the two correlate, and the best loot in the world is
+disproportionately inside the worst places to be. Nobody wrote that down.
 
 ## Under the hood
 
-**Sky and light.** A Hillaire-style scattering chain — transmittance,
-multiple-scattering and sky-view LUTs in half-float targets, Rayleigh + Mie with
-Cornette-Shanks phase and an ozone absorption layer. The sun follows a NOAA solar
-ephemeris, so it rises in the east on an arc that is correct for the latitude and
-day of year, and its colour comes from the extinction integral along its own slant
-path rather than a keyframed gradient. Earth's shadow and the Belt of Venus fall out
-of a planetary-shadow test in the raymarch. At night, 6,600 stars from a
-deterministic catalogue with power-law magnitudes and blackbody colours rotate about
-the celestial pole, behind a Milky Way built in true galactic coordinates.
+**The mountains.** Four stratovolcanoes and two cinder cones, placed by hand on a
+continuous volcanic crest, because a cone is *concave up* — shallow at the base and
+steepening all the way to the summit — and that is the exact opposite of what noise
+gives you. With `h(r) = H·(1 − r/R)^1.62` the summit slope works out at 31°, the angle
+of repose for fragmental volcanic debris, which is the angle real cones stand at. Radial
+barrancas are deepest at mid-flank; the summit crater is a subtracted bowl, which leaves
+the raised rim for free; and the fractal mountain noise is faded out over the top third
+of every cone, because noise on a cone's shoulders reads as erosion and noise on its
+summit reads as a broken cone.
 
-**Terrain.** Domain-warped ridged multifractal, then **real hydraulic erosion** —
-droplet simulation with sediment capacity, deposition and evaporation — which is what
-carves the dendritic drainage networks and deposits alluvial fans at the range feet.
-Thermal erosion collapses anything past the talus angle into scree. The resulting
-flow-accumulation map then drives where rivers run, where vegetation is densest, and
-where debris collects.
+**The divide.** The crest runs north–south and everything follows from which side of it
+you are on. Air off the Pacific is forced up the west flank, drops its water there, and
+comes down the east side dry — so within thirty kilometres you get temperate rainforest
+on one side and sagebrush, basalt and pumice desert on the other. Aridity is computed
+from the signed distance to the crest, and vegetation, ground colour and scatter all
+inherit the divide without knowing it exists.
 
-**Rendering.** Cascaded shadow maps with PCSS contact hardening and texel-snapped,
-hysteresis-quantised cascade fits; GTAO; TAA with YCoCg variance clipping; SSR;
-raymarched volumetric clouds with a deep-scattering floor (cloud droplets have albedo
-≈ 0.9999 — light entering is redirected, not absorbed, and modelling every octave as
-Beer absorption is what makes big clouds go grey); AgX tonemapping with a strictly
-monotone highlight shoulder.
+**Lava.** A basalt flow field is nearly flat at the kilometre scale and savage at the
+metre scale, with essentially nothing in between. That spectral gap is the whole tell:
+hills have detail at every scale, lava has detail at exactly one, which is why a flow
+looks like nothing from a ridge and is impassable on foot.
 
-**Materials.** 35 procedural PBR surfaces baked across a worker pool at boot, each
-authored in three explicit frequency bands (metres / decimetres / millimetres) with
-cavity dirt and edge wear solved over the finished height field.
+**The bike.** A genuine bicycle model — `yawRate = v·tan(steer)/wheelbase` — so you
+cannot turn at a standstill and the turn radius grows with speed. The lean follows the
+real balance condition, `lean = atan(v·yawRate/g)`, which means it banks by exactly as
+much as the corner demands. Faking the lean off steering input is the usual shortcut and
+it reads as wrong immediately, because the bike then leans hardest where it is turning
+least. Attitude comes from sampling the ground under both contact patches 1.5 m apart,
+which is what stops it burying its nose in a ditch.
 
-**Life.** Animals perceive by sight, hearing *and* scent — stand upwind of a deer
-herd at 125 m and they are unaware; cross to the other side of the wind and they are
-fleeing within a second. Horses have four gaits with correct footfall sequences and
-foot IK. The rider's arms solve to grip sockets on the rifle itself, so the muzzle
-points exactly where the shot goes, on foot or from the saddle.
+**The engine.** Four oscillators through one resonant lowpass. The audible one is a
+sawtooth an octave *below* the firing rate — a 270° twin fires unevenly, and that
+half-rate lope is the entire difference between a big twin and a scooter. Intake noise
+is driven by throttle rather than by rpm, so the motor audibly strains under load and
+goes quiet on a trailing throttle at the same revs. There is a gearbox purely so the
+note *falls* when it changes up.
 
-**Audio.** Entirely synthesised WebAudio — no samples. The rifle is five layers, and
-its echo schedule comes from marching the real terrain for reflectors, so a shot on
-open ground returns at `2d/c` from a ridge 315 m away.
+**The Riven.** Survivors' word for them — *riven*, torn apart — and the same word the
+map uses for the gap north of the crest, because the people who named one named the
+other. Three shapes, distinguishable by silhouette alone at eighty metres because that
+is the only warning you get: the **stray** (human height, pitched forward so the head
+leads the body), the **skitter** (0.85 m on all fours, reads as an animal until it is
+far too close), and the **harrow** (2.15 m, slow, worth running from).
+
+They move in packs of three to twelve around fixed nests, and the horde is compressed
+into one mechanic: one that sees you screams, and the scream puts
+everything within 62 m straight into a chase with your position already known — which
+chains through overlapping packs. Waking one group next to two others is how six become
+twenty-five without twenty-five ever being simulated as a group.
+
+**The Cordon.** What is left of the people who enforced the quarantine — the
+EVACUATION and CHECKPOINT bills pasted on the town walls are theirs — still at the
+post, still charging for the road, with nobody left to answer to. They exist because
+the road network handed the player a straight upgrade with no price, and an upgrade
+with no price is a menu rather than a decision. They hold the **highways
+specifically**, so the fastest way anywhere is the way somebody is watching, and the
+two-track through the timber is slow, rough and safe.
+
+Every rule is inverted against the Riven so the two cannot be answered the same way:
+they sense by sight rather than sound, crouching does nothing at close range, the
+bike does not save you, and running does not either. The HUD says which is which,
+because the wrong response gets you killed.
+
+The best part is emergent. A firefight is the loudest event in the world — louder
+than your own rifle — and the Cordon will shoot at Riven that get close. Kiting a
+pack onto a checkpoint is a real way to take one, and nobody scripted it; it falls
+out of both systems being honest about noise.
+
+**Redwoods.** 48–78 m, and the point of them is scale — which is not a property
+of one object but a relationship. A 62 m redwood among 20 m ponderosa reads as
+enormous; the same tree alone reads as a normal tree seen from closer. So two
+thirds of the height is clean bole with nothing on it, the crown radius is 12% of
+height against the pine's 30%, and the butt swell is an exponential buttress
+bolted onto a near-cylindrical column. The empty vertical column *is* the effect.
+They are sited rather than sprinkled: a low-frequency grove mask plus moisture and
+altitude gates puts them on the wet valley floors west of the crest and nowhere
+else, so riding up out of the valley means riding out of them.
+
+**Columnar basalt.** The signature rock of a flood-basalt province, and it looks
+like masonry because it is a crystallisation pattern — a cooling sheet contracts,
+relieves the strain as cracks meeting at 120°, and those hexagons extrude down the
+cooling front into columns. Three things follow and all three are modelled: the
+columns *tessellate* (one block that cracked, not a pile of rocks), the tops are
+*broken at cross-joints* rather than cut to an envelope, and they stand
+*perpendicular to the cooling surface*, so a cluster shares one tilt instead of
+each column leaning independently. Placed where flat ground paints as bedrock —
+on this map the unique signature of a young lava field — and on cut faces where a
+river has sliced a flow open.
+
+**Sky and light.** A Hillaire-style scattering chain — transmittance, multiple-scattering
+and sky-view LUTs, Rayleigh + Mie with Cornette-Shanks phase and an ozone layer. The sun
+follows a NOAA solar ephemeris at 43.9° N, which is worth more than a geography note:
+nine degrees further north than this world used to be is a materially lower sun, longer
+shadows all day, and a golden hour that lasts.
+
+**Rendering.** Cascaded shadow maps with PCSS contact hardening; GTAO; TAA with YCoCg
+variance clipping; SSR; raymarched volumetric clouds with a deep-scattering floor; AgX
+tonemapping with a strictly monotone highlight shoulder.
+
+## On a phone
+
+**Running it on your own phone**, easiest first:
+
+```bash
+# 1. Same Wi-Fi as your computer — fastest to iterate on
+npm run dev:lan          # then open the Network URL it prints, e.g.
+                         # http://192.168.1.24:5173
+```
+
+The plain `npm run dev` binds to `127.0.0.1` and your phone cannot reach it;
+`dev:lan` is the same server bound to all interfaces. If nothing loads, your
+network is probably isolating clients (common on guest and corporate Wi-Fi) —
+use a hotspot from the phone itself, or deploy:
+
+```bash
+# 2. A real URL, works anywhere, including cellular
+npx vercel --prod        # the repo is already configured for it
+```
+
+```bash
+# 3. Any static host
+npm run build            # writes dist/ — upload it anywhere
+npm run preview:lan      # or serve the built copy on the LAN to check it first
+```
+
+**Add to Home Screen.** Do this on iPhone. Safari on iPhone does not implement
+the Fullscreen API at all (only iPad does), so the in-page fullscreen request is
+a silent no-op and you keep the address bar on the device with the least screen
+to spare. An installed copy runs genuinely fullscreen and starts on the mobile
+preset. Android Chrome supports both, but installing is still nicer.
+
+**Useful URL parameters**
+
+| | |
+|---|---|
+| `?quality=mobile` | force the phone preset (also `low\|medium\|high\|ultra`) |
+| `?touch=1` | show the touch controls on a desktop, for testing |
+| `?touch=0` | hide them on a touch device |
+
+**What to expect.** The world is generated at load — hydraulic erosion, A* road
+routing, 35 baked PBR materials — so first paint takes a while and the boot
+screen is showing real progress, not a fake bar. Turn the volume up: the engine,
+the rain and the rifle are all synthesised and there is no music to hide behind.
+
+## How it decides you are on a phone
+
+Detection is a media query, not a user-agent sniff: coarse pointer plus no hover. The
+mobile preset renders at `pixelRatio 0.62` and turns the cloud raymarch off, which
+together are worth more than everything else in the block — a phone GPU's bottleneck is
+fragments and bandwidth, never triangles.
+
+The touch overlay is DOM rather than canvas, so the browser composites it and the render
+loop pays nothing. The movement stick feeds *analog* axes into the player's input (the
+throttle needs the gradient); discrete actions dispatch real `KeyboardEvent`s on
+`window`, so every existing handler — including its priority ordering — runs unchanged
+rather than being reimplemented and drifting.
 
 ## Architecture
 
-Twenty systems on a fixed lifecycle, sharing one frozen context object:
+Twenty-six systems on a fixed lifecycle, sharing one frozen context object:
 
 ```
 src/core/       Engine, Context (the shared contract), Config
 src/materials/  procedural PBR library + worker bake pool
-src/world/      Terrain · Vegetation · Scatter · Town
+src/world/      Terrain · Roads · Vegetation · Scatter · Town
 src/render/     Sky · Clouds · Water · Lighting · Particles · PostFX
 src/sim/        TimeOfDay · Weather · Physics · Wildlife
-src/player/     Player · Horse · Weapon · CameraRig
+                Riven · Cordon · Loot · Garage · Compound
+src/player/     Player · Bike · Weapon · CameraRig
 src/audio/      synthesised beds + foley
-src/ui/         HUD
+src/ui/         HUD · TouchControls
 ```
 
-Every system implements `init / update / lateUpdate / resize / dispose` and
-communicates only through `ctx` and events. Ownership of every shared field is
-documented in [`docs/CONTRACTS.md`](docs/CONTRACTS.md) — that file is the reason
-twenty independently-written systems compose at all.
+Every system implements `init / update / lateUpdate / resize / dispose` and communicates
+only through `ctx` and events. Ownership of every shared field is documented in
+[`docs/CONTRACTS.md`](docs/CONTRACTS.md).
 
-## How it was judged
+The bike deliberately publishes the same surface the horse it replaced did — `state`,
+`yaw`, `speed01`, `renderPos`, `syncPose()`, `getSaddle()` — so the mount transition,
+the mounted pose, the camera rig and the audio hooks all work against it unchanged.
+Where the horse published stirrup irons, the bike publishes footpegs.
 
-The interesting part of this repo may be the test rig rather than the game. Since
-"does it look good" is not a unit test, the project grew a set of instruments that
-answer it mechanically. They live in [`tools/`](tools) and are documented in
+## How it is judged
+
+The interesting part of this repo may be the test rig rather than the game. Since "does
+it look good" is not a unit test, the project grew instruments that answer it
+mechanically. They live in [`tools/`](tools) and are documented in
 [`docs/PROCESS.md`](docs/PROCESS.md).
 
 | Tool | What it catches |
 |---|---|
-| `capture.mjs` | renders 10 canonical shots headless on the real GPU, deterministically |
+| `capture.mjs` | renders canonical shots headless on the real GPU, deterministically |
 | `metrics.py` | a **regression suite for images** — every defect ever found, permanently asserted |
-| `motion.py` | temporal artifacts: shimmer, LOD pop, ghosting, sun-driven stepping |
+| `motion.py` | temporal artifacts: shimmer, LOD pop, ghosting |
 | `flicker.mjs` | camera-motion flicker binned by true camera-relative distance |
-| `abcompare.py` | blind A/B, and a champion ladder against the previous build |
+| `abcompare.py` | blind A/B against the previous build |
 | `scout.mjs` | adversarial camera — hunts the ugliest frame in the world |
-
-`metrics.py` is the one worth stealing. Every gate in it traces to a defect that was
-once real here: a frame that rendered **three sun discs**; aerial perspective that was
-chromatically *inverted*, so distant ridges came out warmer than the foreground; a
-storm whose darkest pixel was mid-grey. Each was found by eye once, then encoded as an
-assertion so it could never come back silently. Run it against an early build and it
-independently rediscovers them.
-
-A few things it taught, written up in `docs/PROCESS.md`:
-
-- **A gate that has never fired is not proven.** Every threshold here was calibrated
-  by replaying it against the build where the defect was live.
-- **Determinism controls create blind spots.** The capture harness pauses the clock
-  for reproducibility — which made every sun-rate-driven defect invisible until a
-  human found one by playing.
-- **An optimisation can invalidate an instrument.** Removing two blocking readbacks
-  also removed the accidental GPU sync that frame timing depended on; the number kept
-  looking plausible while measuring nothing.
-
-## Deploying
-
-Configured for Vercel out of the box — [`vercel.json`](vercel.json) sets immutable
-caching on fingerprinted assets, `must-revalidate` on the entry document, and baseline
-security headers.
-
-```bash
-npx vercel --prod
-```
-
-If you deploy to a different domain, update the four absolute URLs in `index.html`;
-Open Graph images cannot be relative.
-
-## Building on it
-
-Read [`docs/CONTRACTS.md`](docs/CONTRACTS.md) first — it defines the frozen
-interfaces, the ownership table, and the art direction. Then:
 
 ```bash
 npm run dev            # play it
 npm run capture:fast   # render the canonical shots (1280×720, ~4× cheaper)
-npm run metrics        # run the image regression suite
+npm run metrics        # image regression suite
 npm run motion         # temporal artifact gates
-npm run scout          # adversarial camera sweep
 ```
 
-Two rules keep it coherent: **no external assets** (if you need a texture, generate
-it) and **no `Math.random()`** (use the seeded `rng` from `src/core/Context.js`, or
-captures stop being reproducible and every instrument above stops working).
+Two rules keep it coherent: **no external assets** (if you need a texture, generate it)
+and **no `Math.random()`** (use the seeded `rng` from `src/core/Context.js`, or captures
+stop being reproducible and every instrument above stops working).
 
-## Notes
+## Lineage
 
-Built as an experiment in how far a browser can be pushed with a procedural-only
-budget, and in whether "looks good" can be made into a measurable, regression-tested
-property.
+This was [RED SANDS](https://github.com/gillworks/red-sands), an open-world western, and
+the renderer, the material library, the audio synthesis and the whole test rig are its
+work. The conversion replaced the world: desert became the Cascades, the horse became a
+motorcycle, the weather turned, and something moved into the trees.
 
-Red Dead Redemption 2 was used as the quality bar during development — reference
-frames were kept locally for side-by-side critique and are **not** part of this
-repository. This project is unaffiliated with and unendorsed by Rockstar Games.
+*Days Gone* was the design reference for that conversion in the same way Red Dead
+Redemption 2 was the quality bar for the original. This project is unaffiliated with and
+unendorsed by Sony Interactive Entertainment, Bend Studio or Rockstar Games, and shares
+no names, characters or assets with either game.
 
 ## License
 

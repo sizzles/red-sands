@@ -5,7 +5,7 @@ import {
 import {
   makeRock, makeDeadTree, makeLog, makeStump, makeFencePost, makeFenceRail,
   makeYucca, makePricklyPear, makeSaguaro, makeSkull, makeBones, makeRuinWall,
-  makeBush, makeTumbleweed,
+  makeBush, makeTumbleweed, makeBasaltColumns,
 } from './scatter/Geometry.js';
 import { makeBushAtlas, makePlantSkin } from './scatter/Textures.js';
 import { makeScatterMaterial, updateScatterMaterial } from './scatter/Material.js';
@@ -16,6 +16,7 @@ import { Bedding } from './scatter/Bedding.js';
 import { ScatterCollision } from './scatter/Collision.js';
 import { planHeroes, emitHeroFormation } from './scatter/Heroes.js';
 import { ZONE, logSize } from './vegetation/Ecology.js';
+import { regionAt } from './terrain/Field.js';
 
 /**
  * ============================================================================
@@ -80,6 +81,22 @@ const ROCK_TINTS = [
   [0.90, 0.91, 0.92], // cold slate
   [1.08, 1.02, 0.84], // bleached ochre
   [0.95, 0.90, 0.81], // shale
+];
+
+/* The lava beds are not desert stone with the contrast turned down — they are a
+   different rock, and the palette above cannot reach them from any entry. Fresh
+   basalt is a 0.06-0.09 linear reflector against desert stone's ~0.20, and what
+   breaks the black is ash and lichen rather than iron oxide, so there is no red
+   in it at all. Placement already puts ordinary boulders, stones and outcrops on
+   the flows (they belong there — a flow field is strewn with its own rubble),
+   and with one shared palette they came out as pale tan cobbles lying on a
+   near-black ground. That combination does not occur anywhere in nature, and it
+   was the single most conspicuous thing in the lava-bed shot. */
+const BASALT_TINTS = [
+  [0.34, 0.34, 0.36], // fresh flow, faintly blue in the shadow
+  [0.42, 0.41, 0.39], // weathered surface, ash-dusted
+  [0.29, 0.30, 0.32], // glassy pahoehoe, the darkest of them
+  [0.47, 0.46, 0.42], // old flow, lichen taking hold
 ];
 
 const FOLIAGE_TINTS = [
@@ -705,6 +722,26 @@ export class Scatter {
     }
     this._kind('outcrop', this.rockMat, outVariants);
 
+    /* ------------------------------------------------------ basalt columns
+     * Four variants: two colonnades of 2–5 m and two of 7–12 m. The tall pair
+     * get a generous shadowRadius because an 11 m colonnade throws a shadow
+     * the length of a house at the hour this world spends most of its time in,
+     * and that shadow is most of what makes it read as tall. */
+    const basaltVariants = [];
+    for (let v = 0; v < 4; v++) {
+      const tall = v >= 2;
+      const seed = S + 5501 + v * 877;
+      const gb = makeBasaltColumns(seed, { tall });
+      const tb = this._seat(gb);
+      const gb1 = makeBasaltColumns(seed, { tall });
+      this._seat(gb1, tb);
+      basaltVariants.push([
+        { geom: gb, far: tall ? 520 : 300, band: 24, max: Math.round(60 * D), shadowRadius: tall ? 14 : 6 },
+        { geom: gb1, far: RING.outcrop, band: 80, max: Math.round(140 * D), shadowRadius: tall ? 14 : 6 },
+      ]);
+    }
+    this._kind('basalt', this.rockMat, basaltVariants);
+
     /* ------------------------------------------------------- small stones
      * Two variants and a shadow-casting near LOD: a pebble that casts nothing
      * onto the dirt 3 cm away is the reason the ground reads as a printed
@@ -828,6 +865,27 @@ export class Scatter {
 
   _buildTrails() {
     const ctx = this.ctx;
+    /*
+     * THE NETWORK IS NOT OURS ANY MORE.
+     *
+     * Roads (which inits before this system) plans the whole network — where it
+     * goes, what class each road is, how wide it runs and where the fuel
+     * stations sit — and the bike, the vegetation bake and this ribbon all have
+     * to agree on it to the metre. Two systems routing their own roads from the
+     * same terrain would agree almost everywhere and be wrong in exactly the
+     * places that matter, so the plan has one owner and this is the renderer.
+     *
+     * The fallback to our own router is kept for the case where Roads failed to
+     * init (terrain not ready), because a world with cart tracks is better than
+     * a world with an exception in it.
+     */
+    const R = ctx.get('roads');
+    if (R && R.routes && R.routes.length) {
+      this.routes = R.routes;
+      this.trailIndex = R.index;
+      this._trailMaterial();
+      return;
+    }
     const coarse = buildTrailNetwork(ctx, this.seed);
     /* Resample to ~3.5 m so the ribbon hugs the ground instead of spanning
        14 m chords that float over hollows and cut through rises. */
@@ -853,7 +911,12 @@ export class Scatter {
       return out;
     });
     this.trailIndex = new TrailIndex(this.routes, 72);
+    this._trailMaterial();
+  }
 
+  /** The ribbon's surface and its streaming buffers. */
+  _trailMaterial() {
+    const ctx = this.ctx;
     const T = ctx.get('procTextures');
     let set = null;
     try { set = T && T.get ? T.get('dirt_packed') : null; } catch (e) { set = null; }
@@ -926,9 +989,39 @@ export class Scatter {
     const LANE_A = [0.0, 0.88, 0.55, 0.88, 0.0];
     const LANE_C = [0.15, 0.9, 0.25, 0.9, 0.15];
     const LANE_D = [0.0, -0.055, 0.0, -0.055, 0.0];
+    /*
+     * SURFACED ROADS NEED A DIFFERENT CROSS-SECTION, and this is the fix for a
+     * measured defect: the ribbon was rendering correctly at the road (a trail
+     * vertex sat at 0.0 m from the camera, 31 536 indices, mesh visible) and was
+     * still invisible on screen, because a two-rut dirt-coloured wear decal
+     * drawn over dirt is not a road — it is a slightly different dirt.
+     *
+     * A cart track IS that, and should stay that. A state route is a different
+     * material laid ON the ground: darker than anything around it, solid across
+     * its full width rather than worn into two wheel paths, and with no ruts at
+     * all. So the profile is interpolated by the route's class:
+     *
+     *   LANE_A_S  alpha nearly solid all the way across, feathering only at the
+     *             very edge where the seal has broken up
+     *   RGB       driven toward asphalt-dark. The vertex colour multiplies the
+     *             material's own tint, so this is the whole difference between
+     *             gravel and blacktop without a second material or a second
+     *             draw call.
+     *   LANE_D    rut depth scaled to zero — a graded road is crowned, not
+     *             rutted, and ruts are what say "nobody maintains this".
+     */
+    const LANE_A_S = [0.12, 0.96, 0.98, 0.96, 0.12];
+    /* Linear-space albedo of worn asphalt against the ~0.5 of pale ground. */
+    const SEAL = 0.30;
 
     for (let r = 0; r < this.routes.length; r++) {
       const pts = this.routes[r];
+      /* 0 = a dirt two-track, 1 = a sealed carriageway. Routes that predate the
+         roads system (the fallback network) have no class and stay tracks. */
+      const surf = pts.cls
+        ? (pts.cls.name === 'highway' ? 1 : (pts.cls.name === 'logging' ? 0.45 : 0))
+        : 0;
+      const tint = 1 - (1 - SEAL) * surf;
       let prevRow = -1;
       let run = 0;
       for (let i = 0; i < pts.length; i++) {
@@ -948,14 +1041,36 @@ export class Scatter {
         tx /= tl; tz /= tl;
         const sx = -tz, sz = tx;
         run += tl * 0.5;
-        /* width wanders so the track is not a ruled stripe */
-        const w = 1.30 + fbm2(p.x / 90, p.z / 90, 2, this.seed + 77) * 0.45;
+        /*
+         * Width comes from the ROUTE now, not from a constant: a state route is
+         * 7.2 m of carriageway and a two-track is 3 m, and having them the same
+         * width was the single clearest tell that the network was one thing
+         * pretending to be several. The noise term stays, because even a
+         * surfaced road has an edge that wanders where it has broken up.
+         */
+        const hw = pts.halfWidth || 1.30;
+        const w = hw + fbm2(p.x / 90, p.z / 90, 2, this.seed + 77) * (0.16 + hw * 0.12);
         const row = vi;
         for (let k = 0; k < 5; k++) {
           const off = LANE[k] * w;
           const px = p.x + sx * off;
           const pz = p.z + sz * off;
-          const py = gh(px, pz) + 0.055 + LANE_D[k];
+          /*
+           * RIDE HEIGHT. 5.5 cm was enough for a cart track and is not enough
+           * for a road: the ribbon is a transparent, depth-tested decal drawn
+           * against a LOD'd terrain mesh, and once the terrain tessellation
+           * error exceeds the offset the road simply vanishes behind the ground
+           * it is lying on. Diagnosed the hard way — the mesh was present, in
+           * the scene, visible, with 31 536 indices and a vertex 0.0 m from the
+           * camera, and rendered nothing.
+           *
+           * A surfaced road gets 16 cm, which is under a kerb height and so
+           * reads as flush from any angle a rider sees, while surviving the
+           * mesh error at the distances the ribbon actually streams to.
+           * polygonOffset stays as the fine adjustment for the coplanar case;
+           * it cannot help when the surfaces are genuinely not coplanar.
+           */
+          const py = gh(px, pz) + 0.055 + 0.105 * surf + LANE_D[k] * (1 - surf);
           P[vi * 3] = px; P[vi * 3 + 1] = py; P[vi * 3 + 2] = pz;
           const nl = 0.0;
           N[vi * 3] = nl; N[vi * 3 + 1] = 1; N[vi * 3 + 2] = nl;
@@ -965,10 +1080,19 @@ export class Scatter {
           const fade = clamp(1 - dHere / R, 0, 1);
           /* fade in over the first/last 9 samples of a contiguous run */
           const endT = Math.min(i, pts.length - 1 - i) / 9;
-          const edge = LANE_A[k];
-          CO[vi * 4] = 1; CO[vi * 4 + 1] = 1; CO[vi * 4 + 2] = 1;
+          const edge = LANE_A[k] + (LANE_A_S[k] - LANE_A[k]) * surf;
+          /* Slightly cooler as well as darker: bitumen is a neutral-to-blue
+             grey and the ground here is warm, so a purely luminance-darkened
+             ribbon still reads as mud. */
+          CO[vi * 4] = tint;
+          CO[vi * 4 + 1] = tint * (1 - 0.02 * surf);
+          CO[vi * 4 + 2] = tint * (1 + 0.06 * surf);
+          /* The near-field alpha taper exists so a faint track underfoot does
+             not read as a painted stripe. A sealed road has no such problem and
+             wants to stay solid right up to the camera. */
+          const nearTaper = 0.62 + 0.38 * smoothstep(6, 26, dHere);
           CO[vi * 4 + 3] = edge * smoothstep(0, 0.22, fade) * clamp(endT, 0, 1)
-            * (0.62 + 0.38 * smoothstep(6, 26, dHere));
+            * (nearTaper + (1 - nearTaper) * surf);
           vi++;
         }
         if (prevRow >= 0 && ii + 24 <= I.length) {
@@ -1029,6 +1153,18 @@ export class Scatter {
         if (this._campR2 > 0) {
           const cx = x - this._campX, cz = z - this._campZ;
           if (cx * cx + cz * cz < this._campR2) continue;
+        }
+        /*
+         * COMPOUND KEEP-OUT. Same argument again, two scales up. Scatter runs
+         * at 45 and the compound cannot build until 91, so the boulder lattice
+         * had no idea the position existed — and put a two-storey glacial
+         * erratic hard against the curtain wall, occluding a third of the
+         * fortress in every shot taken of it. CompoundSite publishes the
+         * footprint at 36 for exactly this test.
+         */
+        if (this._cmpR2 > 0) {
+          const mx = x - this._cmpX, mz = z - this._cmpZ;
+          if (mx * mx + mz * mz < this._cmpR2) continue;
         }
         /*
          * TOWN KEEP-OUT. Same argument as the camp, one scale up: pass-9
@@ -1131,6 +1267,12 @@ export class Scatter {
       this._campR2 = c ? (rad * 1.30) * (rad * 1.30) : 0;
       this._townOnStreet = (town && town.site && town.site.onStreet) || null;
     }
+    if (this._cmpR2 === undefined) {
+      const cs = this.ctx.poi.get('compound_site');
+      this._cmpX = cs ? cs.pos.x : 0;
+      this._cmpZ = cs ? cs.pos.z : 0;
+      this._cmpR2 = cs ? cs.clear * cs.clear : 0;
+    }
     for (const kind of this.kinds.values()) kind.reset();
     if (this.bedding) this.bedding.begin(ox, oz);
     if (this.collision) this.collision.begin(ox, oz);
@@ -1140,6 +1282,7 @@ export class Scatter {
          on the instance batches, so a foreground anchor can never be starved
          out by a thousand pebbles that arrived first. */
       () => this._emitErratics(ox, oz),
+      () => this._emitBasalt(ox, oz),
       () => this._emitRocks(ox, oz),
       () => this._emitStones(ox, oz),
       () => this._emitTrees(ox, oz),
@@ -1274,7 +1417,7 @@ export class Scatter {
     const gh = this.ctx.world.getHeight;
     const probe = this._probe;
     const r = streamRng((this.seed ^ 0x1d7f3c) >>> 0);
-    const tint = this._tintFor(c.x, c.z, ROCK_TINTS, 3);
+    const tint = this._tintFor(c.x, c.z, this._rockPal(c.x, c.z), 3);
     const wood = [1.06, 0.98, 0.88];
 
     const put = (kind, variant, px, pz, s, align, sink, tnt, sy, sz, bedR = 0, bedK = 1) => {
@@ -1340,6 +1483,24 @@ export class Scatter {
       0.75 + r() * 0.4, 0.7, 0.10, wood, null, null, 0.9, 0.95);
   }
 
+  /**
+   * Which rock this is, geologically, at a world position.
+   *
+   * Cached on the 190 m tint cell rather than evaluated per instance: `regionAt`
+   * costs two domain-warp fbms plus the cone and crest lookups, and placement
+   * walks its lattice in scan order, so a one-entry cache catches nearly every
+   * call. It also keeps the answer constant across a cluster, which is what
+   * makes a flow field read as one flow rather than as a chequerboard.
+   */
+  _rockPal(x, z) {
+    const cx = Math.floor(x / 190), cz = Math.floor(z / 190);
+    if (cx !== this._palCX || cz !== this._palCZ) {
+      this._palCX = cx; this._palCZ = cz;
+      this._palBasalt = regionAt(cx * 190 + 95, cz * 190 + 95).bad > 0.42;
+    }
+    return this._palBasalt ? BASALT_TINTS : ROCK_TINTS;
+  }
+
   _tintFor(x, z, palette, salt) {
     const cx = Math.floor(x / 190), cz = Math.floor(z / 190);
     const k = (rand2(cx, cz, this.seed + salt) * palette.length) | 0;
@@ -1389,6 +1550,43 @@ export class Scatter {
         d *= smoothstep(0.28, 0.58, p.slope);
         return clamp(d, 0, 1);
       }, 'rock');
+  }
+
+  /**
+   * COLUMNAR BASALT, and where it belongs.
+   *
+   * Two settings, and they are the two places it actually occurs:
+   *
+   *   THE FLOWS   flat ground that paints as bedrock. That combination is the
+   *               unique signature of a young lava field — everywhere else on
+   *               this map, flat means soil — so it needs no region lookup to
+   *               find: rock plus level IS the lava bed.
+   *   THE CUTS    steep faces, where a river or a road has sliced into a flow
+   *               and exposed its section. This is the version people
+   *               photograph, and it is worth having even though it is rarer.
+   *
+   * Deliberately clustered hard through `rarePatch`: a colonnade is an EVENT.
+   * Sprinkled evenly at low density it would read as debris; concentrated into
+   * a handful of exposures it reads as an outcrop you ride out of your way to
+   * look at, which is the whole point of putting it in.
+   */
+  _emitBasalt(ox, oz) {
+    const S = this.seed;
+    this._lattice(ox, oz, 26, RING.outcrop, 337,
+      (x, z) => rarePatch(x, z, S + 553, 420) * 1.5,
+      (p) => {
+        if (p.water) return false;
+        if (p.snow > 0.4) return false;
+        const rock = clamp(p.rock * 1.35, 0, 1);
+        if (rock < 0.30) return false;
+        /* Flat bedrock — the flow surface itself. */
+        const flow = smoothstep(0.80, 0.96, p.slope) * rock;
+        /* A cut face. Steep, and steeper is better, which is the opposite of
+           every other rock rule here. */
+        const cut = smoothstep(0.62, 0.34, p.slope) * rock * 1.15;
+        const d = flow * 0.85 + cut * 1.25;
+        return clamp(d, 0, 1);
+      }, 'basalt');
   }
 
   _emitOutcrops(ox, oz) {
@@ -1447,7 +1645,7 @@ export class Scatter {
         if (probe.water || probe.slope < 0.46) continue;
         const dist = Math.sqrt(d2);
         const rnd = streamRng(((h * 4294967296) | 0) ^ 0x77a1);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         const nrm = { x: probe.nx, y: probe.ny, z: probe.nz };
         /* 12 m to 36 m, tail 1.35. Pass 10 drew 10-38 with a tail of 1.5, which
            in practice put most "landmarks" at 11-13 m — lost in the scrub at
@@ -1524,7 +1722,7 @@ export class Scatter {
       const dx = site.x - ox, dz = site.z - oz;
       const d2 = dx * dx + dz * dz;
       if (d2 > R2) continue;
-      emitHeroFormation(this, site, Math.sqrt(d2), ROCK_TINTS);
+      emitHeroFormation(this, site, Math.sqrt(d2), this._rockPal(site.x, site.z));
     }
   }
 
@@ -1572,7 +1770,7 @@ export class Scatter {
         if (probe.water || probe.slope < 0.55) continue;
         const dist = Math.sqrt(d2);
         const rnd = streamRng(((h * 4294967296) | 0) ^ 0x3f19);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         const nrm = { x: probe.nx, y: probe.ny, z: probe.nz };
         /* deliberately biased LARGE — this tier exists to be big */
         const base = 2.4 + logSize(rnd(), 0.6, 5.4, 1.35);
@@ -1853,7 +2051,7 @@ export class Scatter {
            outline." */
         if (this.bedding) this.bedding.add(mx, mz, seg * 0.42, dist, 0.85);
         const rub = 4 + ((r() * 5) | 0);
-        const rtint = this._tintFor(a.x, a.z, ROCK_TINTS, 3);
+        const rtint = this._tintFor(a.x, a.z, this._rockPal(a.x, a.z), 3);
         for (let k = 0; k < rub; k++) {
           const t = r();
           const side = (r() - 0.5) * 2.2;
@@ -1882,7 +2080,7 @@ export class Scatter {
 
     switch (kindHint) {
       case 'rock': {
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         const zn = this._zone(x, z);
         const bigCountry = zn === ZONE.SCREE || zn === ZONE.OUTCROP;
         /* SIZE HIERARCHY. `sizeDist(u, lo, hi, 1.55)` is very nearly uniform
@@ -1924,7 +2122,7 @@ export class Scatter {
       case 'outcrop': {
         const variant = (rnd() * 7) | 0;
         const s = logSize(rnd(), 1.9, 23.0, 2.5);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         this._emit('outcrop', variant, x, p.y, z, s,
           rnd() * Math.PI * 2, rnd() * 0.10, n, 0.55,
           s * (0.26 + rnd() * 0.22), tint, dist,
@@ -1947,7 +2145,7 @@ export class Scatter {
       case 'stone': {
         const variant = (rnd() * 2) | 0;
         const s = logSize(rnd(), 0.05, 1.05, 2.7);
-        const tint = this._tintFor(x, z, ROCK_TINTS, 3);
+        const tint = this._tintFor(x, z, this._rockPal(x, z), 3);
         this._emit('stone', variant, x, p.y, z, s,
           rnd() * Math.PI * 2, rnd() * 0.3, n, 0.8,
           s * (0.32 + rnd() * 0.3), tint, dist,

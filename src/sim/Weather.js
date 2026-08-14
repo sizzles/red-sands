@@ -81,35 +81,38 @@ const defaults = {
 const mk = (o) => Object.assign({}, defaults, o);
 
 const PROFILES = {
-  /* Coverage is deliberately generous for a "clear" day. A western sky with
-   * literally nothing in it gives high noon no cloud shadow to sweep across the
-   * plain, and moving cloud shadow is the single strongest cheap realism cue
-   * available (pass-2 forensic: "distant mountains ... no cloud shadows").
-   * 0.46 with cloudType 0.62 is a field of crisp fair-weather cumulus with
-   * plenty of blue between them, not a lid. */
+  /* Coverage is deliberately generous for a "clear" day. A sky with literally
+   * nothing in it gives high noon no cloud shadow to sweep across the valley,
+   * and moving cloud shadow is the single strongest cheap realism cue available
+   * (pass-2 forensic: "distant mountains ... no cloud shadows").
+   * 0.52 with cloudType 0.62 is a field of crisp fair-weather cumulus with
+   * plenty of blue between them, not a lid.
+   *
+   * On the wet side of a coastal range a genuinely clear day is a rare, brief
+   * event — see TRANSITIONS — so this profile is the reward, not the default. */
   clear: mk({
-    turbidity: 2.05, cloudCover: 0.52, cloudDensity: 0.58, cloudType: 0.62, cirrus: 0.26,
-    fogDensity: 0.000075, groundMist: 0.0, ambient: 1.0, grey: 0.0,
+    turbidity: 2.05, cloudCover: 0.54, cloudDensity: 0.58, cloudType: 0.62, cirrus: 0.26,
+    fogDensity: 0.000085, groundMist: 0.02, ambient: 1.0, grey: 0.0,
     wind: 2.4, gust: 0.20, sunAtten: 0.03,
-    tint: [0.34, 0.46, 0.70], haze: [0.66, 0.72, 0.83], dur: [420, 1100],
+    tint: [0.34, 0.46, 0.70], haze: [0.66, 0.72, 0.83], dur: [260, 620],
   }),
   fair: mk({
-    turbidity: 2.7, cloudCover: 0.56, cloudDensity: 0.60, cloudType: 0.66, cirrus: 0.22,
-    fogDensity: 0.00013, groundMist: 0.03, ambient: 1.06, grey: 0.10,
-    wind: 3.7, gust: 0.34, sunAtten: 0.09,
-    tint: [0.40, 0.47, 0.62], haze: [0.64, 0.70, 0.80], dur: [320, 820],
+    turbidity: 2.7, cloudCover: 0.62, cloudDensity: 0.62, cloudType: 0.66, cirrus: 0.22,
+    fogDensity: 0.00015, groundMist: 0.05, ambient: 1.06, grey: 0.14,
+    wind: 3.7, gust: 0.34, sunAtten: 0.12,
+    tint: [0.40, 0.47, 0.62], haze: [0.64, 0.70, 0.80], dur: [280, 700],
   }),
   overcast: mk({
     turbidity: 4.1, cloudCover: 0.86, cloudDensity: 0.60, cloudType: 0.14, cirrus: 0.05,
-    fogDensity: 0.00021, groundMist: 0.08, ambient: 1.14, grey: 0.80,
-    wind: 5.2, gust: 0.40, sunAtten: 0.62,
-    tint: [0.40, 0.43, 0.49], haze: [0.53, 0.56, 0.62], dur: [280, 660],
+    fogDensity: 0.00028, groundMist: 0.16, ambient: 1.14, grey: 0.82,
+    wind: 5.2, gust: 0.40, sunAtten: 0.66,
+    tint: [0.40, 0.43, 0.49], haze: [0.53, 0.56, 0.62], dur: [420, 980],
   }),
   rain: mk({
     turbidity: 3.6, cloudCover: 0.88, cloudDensity: 0.84, cloudType: 0.46, cirrus: 0.0,
-    fogDensity: 0.00015, groundMist: 0.0, rain: 0.58, ambient: 0.72, grey: 0.72,
-    wind: 7.2, gust: 0.55, sunAtten: 0.78, thunder: 0.15,
-    tint: [0.31, 0.34, 0.40], haze: [0.42, 0.45, 0.51], dur: [230, 520],
+    fogDensity: 0.00017, groundMist: 0.04, rain: 0.66, ambient: 0.72, grey: 0.74,
+    wind: 7.2, gust: 0.55, sunAtten: 0.80, thunder: 0.15,
+    tint: [0.31, 0.34, 0.40], haze: [0.42, 0.45, 0.51], dur: [380, 900],
   }),
   /* A thunderstorm is a CELL, not a lid, and above all it is DARK. Coverage
    * stays under 1 so the towers have sky to be silhouetted against and the
@@ -157,11 +160,37 @@ const PROFILES = {
     wind: 5.6, gust: 0.52, sunAtten: 0.82,
     tint: [0.50, 0.55, 0.64], haze: [0.60, 0.64, 0.72], dur: [320, 760],
   }),
-  dust: mk({
-    turbidity: 9.6, cloudCover: 0.26, cloudDensity: 0.34, cloudType: 0.62, cirrus: 0.10,
-    fogDensity: 0.00095, groundMist: 0.32, ambient: 0.86, grey: 0.92,
-    wind: 11.5, gust: 0.90, sunAtten: 0.55,
-    tint: [0.46, 0.33, 0.19], haze: [0.58, 0.42, 0.24], dur: [150, 380],
+  /*
+   * DRIZZLE — and this is the one that defines the game.
+   *
+   * The Pacific Northwest's characteristic weather is not the thunderstorm; it
+   * is a low, featureless stratus deck sitting on the ridges, dropping water so
+   * fine it barely registers as falling, for eleven hours at a stretch. It is
+   * NOT a weak version of `rain` — the numbers pull in different directions:
+   *
+   *   cloudCover .96 / cloudType .04   a lid, not cells. There is no structure
+   *                                    overhead to be silhouetted against,
+   *                                    which is what makes the light so flat.
+   *   rain 0.16                        barely any falling water...
+   *   groundMist 0.55, fog 0.0011      ...but very poor visibility anyway,
+   *                                    because the cloud base is ON the
+   *                                    terrain. That inversion — low rain, high
+   *                                    mist — is the whole signature, and it is
+   *                                    exactly the opposite of the storm
+   *                                    profile above, where heavy rain
+   *                                    SCAVENGES the fog out of the air.
+   *   wind 2.2                         and it is dead still, which is why
+   *                                    drizzle feels so much heavier than the
+   *                                    rainfall figure suggests.
+   *
+   * The long dwell (up to 22 minutes) is deliberate: it should feel like it is
+   * never going to stop, because that is the point.
+   */
+  drizzle: mk({
+    turbidity: 3.9, cloudCover: 0.96, cloudDensity: 0.55, cloudType: 0.04, cirrus: 0.0,
+    fogDensity: 0.00110, groundMist: 0.55, rain: 0.16, ambient: 1.05, grey: 0.88,
+    wind: 2.2, gust: 0.18, sunAtten: 0.80,
+    tint: [0.44, 0.47, 0.53], haze: [0.55, 0.58, 0.63], dur: [420, 1320],
   }),
 };
 
@@ -178,14 +207,14 @@ const NUMERIC_KEYS = Object.keys(TAU);
  * edges exist — you cannot get a thunderstorm out of a clear sky.
  */
 const TRANSITIONS = {
-  clear:    { fair: 0.72, dust: 0.13, fog: 0.09, overcast: 0.06 },
-  fair:     { clear: 0.36, overcast: 0.44, dust: 0.09, fog: 0.11 },
-  overcast: { fair: 0.32, rain: 0.42, fog: 0.14, snow: 0.06, storm: 0.06 },
-  rain:     { overcast: 0.50, storm: 0.24, fog: 0.16, fair: 0.10 },
-  storm:    { rain: 0.68, overcast: 0.27, fair: 0.05 },
-  fog:      { overcast: 0.38, fair: 0.37, clear: 0.25 },
-  snow:     { overcast: 0.54, fair: 0.24, clear: 0.22 },
-  dust:     { clear: 0.44, fair: 0.41, overcast: 0.15 },
+  clear:    { fair: 0.62, overcast: 0.26, fog: 0.12 },
+  fair:     { overcast: 0.48, clear: 0.14, drizzle: 0.24, fog: 0.14 },
+  overcast: { drizzle: 0.34, rain: 0.30, fog: 0.14, fair: 0.13, snow: 0.05, storm: 0.04 },
+  drizzle:  { overcast: 0.36, rain: 0.28, fog: 0.24, fair: 0.12 },
+  rain:     { drizzle: 0.34, overcast: 0.30, storm: 0.14, fog: 0.14, fair: 0.08 },
+  storm:    { rain: 0.62, overcast: 0.22, drizzle: 0.13, fair: 0.03 },
+  fog:      { drizzle: 0.34, overcast: 0.34, fair: 0.22, clear: 0.10 },
+  snow:     { overcast: 0.50, drizzle: 0.22, fair: 0.16, clear: 0.12 },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -228,7 +257,7 @@ export class Weather {
     this.rand = rng((ctx.seed ^ 0x9e3779b9) >>> 0);
 
     /** Current *target* state name. */
-    this.state = 'fair';
+    this.state = 'overcast';
     this.previousState = 'fair';
     /** Seconds spent in the current state. */
     this.stateTime = 0;
@@ -289,8 +318,13 @@ export class Weather {
     env.windWaveLength = this.windWaveLength;
     env.windTurb = 0;
 
-    // start on a pleasant fair day and let it evolve from there
-    this._setTarget('fair', true);
+    /*
+     * Open under the deck. Booting into sunshine and letting the chain walk to
+     * overcast takes the better part of ten minutes of play, which meant the
+     * first — and for most players only — impression of the world was of
+     * weather this game is not about.
+     */
+    this._setTarget('overcast', true);
     this._applyInstant();
     this._started = true;
   }
@@ -299,7 +333,7 @@ export class Weather {
 
   /**
    * Force a weather state.
-   * @param {string} name one of clear|fair|overcast|rain|storm|fog|snow|dust
+   * @param {string} name one of clear|fair|overcast|drizzle|rain|storm|fog|snow
    * @param {{instant?: boolean}} [opts] instant skips the transition entirely
    */
   setWeather(name, opts = {}) {
@@ -414,7 +448,7 @@ export class Weather {
       let wt = table[k];
       if (k === 'snow' && !cold) wt = 0;
       if (k === 'rain' && cold) wt *= 0.25;
-      if (k === 'dust' && (this.wetness > 0.25 || this.snowCover > 0.05)) wt *= 0.1;
+      if (k === 'drizzle' && cold) wt *= 0.55;   // it falls as snow up high instead
       if (wt <= 0) continue;
       keys.push(k); w.push(wt); total += wt;
     }
@@ -462,8 +496,15 @@ export class Weather {
     const seasonal = -Math.cos(((doy - 10) / 365) * Math.PI * 2); // -1 mid-winter .. 1 mid-summer
     const tod = env.timeOfDay != null ? env.timeOfDay : 12;
     const diurnal = Math.sin(((tod - 9.5) / 24) * Math.PI * 2);
+    /*
+     * Mountain climate, and colder than the desert this replaced: a 9.5 degC
+     * annual mean against 14.5. That is not decoration — `_pickNext` gates
+     * precipitation type on `temperature < 2.5`, so the mean is what decides
+     * how much of the year the high country gets snow instead of rain, and
+     * dropping it five degrees is what puts a snow line on the map at all.
+     */
     const tTarget =
-      14.5 + seasonal * 13.0 + diurnal * 7.0
+      9.5 + seasonal * 12.0 + diurnal * 6.5
       - this.cur.grey * 4.0 - this.cur.rain * 3.5 - this.cur.wind * 0.12;
     this.temperature = approach(this.temperature, tTarget, 90, dt);
 

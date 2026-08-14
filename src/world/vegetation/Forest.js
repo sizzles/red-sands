@@ -2,6 +2,67 @@ import * as THREE from 'three';
 import { rng } from '../../core/Context.js';
 import { VEG_HASH, VEG_WIND, injectVeg, makeInstanced, hugeSphere } from './VegCommon.js';
 import { buildTreePair, SPECIES_INFO } from './TreeGen.js';
+
+/**
+ * Felled corridor either side of a road centre-line, metres. Wider than the
+ * widest carriageway (3.6 m) by enough that a full-grown pine's canopy does not
+ * overhang the running surface, because a canopy that does is indistinguishable
+ * from a tree growing in the road once you are underneath it.
+ */
+const ROAD_CLEAR = 7.5;
+
+/**
+ * Where the giants are.
+ *
+ * Two octaves at 900 m and 340 m, thresholded hard. The long wavelength decides
+ * which valleys have groves at all and the short one frays their edges, so a
+ * grove has a boundary you can walk out of rather than fading uniformly to
+ * nothing across the whole map.
+ */
+function redwoodMask(x, z) {
+  const a = Math.sin(x * 0.00111 + 2.7) * Math.cos(z * 0.00097 - 1.3);
+  const b = Math.sin((x + 1900) * 0.00294 - 0.6) * Math.cos((z - 700) * 0.00331 + 2.2);
+  return Math.max(0, Math.min(1, 0.5 + a * 0.42 + b * 0.20));
+}
+/**
+ * STANDS — the mosaic a forest is actually made of.
+ *
+ * Clumping and height variance were already here and already working: the
+ * density map opens and closes at 640 m and 185 m, sizes come off a log-normal
+ * with a 5.5% emergent tail, and the rim runts. What was missing is the thing
+ * that reads from a ridge a kilometre away, which is that a forest is a patchwork
+ * of COHORTS. A stand regenerates from a single event — a fire, a blowdown, a
+ * cut — so its trees came up in the same decade and are mostly the same species.
+ * The visible consequence is a hillside laid out in blocks: even-aged pine, then
+ * oak, then a young patch standing half the height of everything around it.
+ *
+ * Drawing species and size independently per tree gives none of that. It gives
+ * salt-and-pepper mixing at every scale and one flat canopy plane, which is what
+ * the wide forest shot showed — texture, but no structure above the tree.
+ *
+ * Two very cheap fields fix it, sampled per tree rather than stored:
+ *
+ *   standSpecies  biases the two- and three-way species splits, so a stand has a
+ *                 dominant with a minority admixture instead of a 50/50 spray
+ *   standAge      scales the whole cohort's height, and gates the emergents,
+ *                 because a 25-year regen patch has no giants in it yet
+ *
+ * Both are smooth trig rather than cellular, deliberately: real stand boundaries
+ * interfinger over tens of metres, and a Voronoi cell would put a straight edge
+ * across the hillside. ~165 m fundamental with a ~70 m second octave to break it.
+ */
+function standSpecies(x, z) {
+  const a = Math.sin(x * 0.0381 - 1.1) * Math.cos(z * 0.0342 + 0.4);
+  const b = Math.sin((x - 830) * 0.0897 + 2.4) * Math.cos((z + 410) * 0.0951 - 1.7);
+  return Math.max(0, Math.min(1, 0.5 + a * 0.44 + b * 0.17));
+}
+
+function standAge(x, z) {
+  const a = Math.sin((x + 5100) * 0.0313 + 0.9) * Math.cos((z - 2600) * 0.0289 - 2.1);
+  const b = Math.sin((x - 240) * 0.0771 - 0.3) * Math.cos((z + 1750) * 0.0824 + 1.4);
+  return Math.max(0, Math.min(1, 0.5 + a * 0.42 + b * 0.16));
+}
+
 import { bakeImpostors, IMPOSTOR_CUTOFF } from './Impostors.js';
 import { LEAF_CUTOFF } from './VegTextures.js';
 import { logSize } from './Ecology.js';
@@ -399,6 +460,10 @@ export class Forest {
     const waterLevel = ctx.world.waterLevel;
     const getHeight = ctx.world.getHeight;
     const isWater = ctx.world.isWater;
+    /* Roads inits before vegetation; resolved once, outside a loop that runs
+       tens of thousands of times. */
+    const roadsSys = ctx.get ? ctx.get('roads') : null;
+    const roadD2 = (roadsSys && roadsSys.index) ? (x, z) => roadsSys.distance2(x, z) : null;
 
     const q = ctx.quality;
     const budget = q.name === 'low' ? 0.35 : q.name === 'medium' ? 0.62 : 1.0;
@@ -437,6 +502,12 @@ export class Forest {
 
     const KIND = this.kindIndex;   // { species: [kindIdx, ...] }
 
+    /* Compound keep-out, resolved once rather than per tree. */
+    const cpoi = this.ctx && this.ctx.poi ? this.ctx.poi.get('compound_site') : null;
+    const cpX = cpoi ? cpoi.pos.x : null;
+    const cpZ = cpoi ? cpoi.pos.z : 0;
+    const cpR2 = cpoi ? cpoi.clear * cpoi.clear : 0;
+
     for (let j = 0; j < res; j++) {
       const z0 = -half + j * cell;
       for (let i = 0; i < res; i++) {
@@ -453,6 +524,31 @@ export class Forest {
           const y = getHeight(x, z);
           if (y < waterLevel + 0.7) continue;
           if (isWater(x, z)) continue;
+          /*
+           * NOTHING GROWS IN THE CARRIAGEWAY. Trees are placed at real world
+           * positions (unlike grass, which is wrapped in the shader), so this
+           * is an exact test rather than a density field — and it has to be
+           * exact, because a single pine standing in the middle of the state
+           * route is the one defect that makes a whole road network read as
+           * fake. The margin is the road's own half-width plus a felled
+           * corridor either side.
+           */
+          if (roadD2) {
+            const rd2 = roadD2(x, z);
+            if (rd2 < ROAD_CLEAR * ROAD_CLEAR) continue;
+          }
+          /*
+           * NOR IN THE COMPOUND'S FIELD OF FIRE. Published by CompoundSite at
+           * order 36 precisely so this test can exist — Compound itself cannot
+           * init until after the Cordon, by which time these trees are already
+           * standing. A garrison that has not felled the timber around its own
+           * walls is not a garrison anyone would be afraid of, and in practice
+           * the first build had pines growing on the parade ground.
+           */
+          if (cpX !== null) {
+            const cdx = x - cpX, cdz = z - cpZ;
+            if (cdx * cdx + cdz * cdz < cpR2) continue;
+          }
           const sl = maps.sample(maps.slope, x, z);
           if (sl < 0.44) continue;
           const mo = maps.sample(maps.moist, x, z);
@@ -460,14 +556,38 @@ export class Forest {
 
           /* --------------------------------------------- species selection */
           let sp;
+          /* `pick` still decides the RARE events — snags and redwood groves —
+             on a straight per-tree draw, because blending those through the
+             stand field would drive their rates through the floor (a 4.2% tail
+             survives a 0.74 blend at about a tenth of its intended frequency).
+             `mix` decides the ordinary species splits, and that one is mostly
+             the stand: 74% cohort, 26% tree. The remaining quarter is what
+             keeps a stand a stand and not a plantation. */
           const pick = r();
+          const stand = standSpecies(x, z);
+          const mix = stand * 0.74 + r() * 0.26;
           const dense = maps.sample(maps.forest, x, z);
-          if (pick < 0.042) sp = 'snag';
-          else if (mo > 0.34 && y < waterLevel + 140) sp = pick < 0.60 ? 'cottonwood' : 'scrubOak';
-          else if (y > 118 && (north > 0.32 || dense > 0.55)) sp = pick < 0.82 ? 'pine' : 'scrubOak';
-          else if (dense > 0.62) sp = pick < 0.55 ? 'pine' : 'scrubOak';
-          else if (pick < 0.26) sp = 'pine';
-          else if (pick < 0.88) sp = 'scrubOak';
+          /*
+           * REDWOOD GROVES. Rare, and sited rather than sprinkled: they want
+           * the wettest, densest, lowest ground on the map, which is the valley
+           * floor west of the crest. `groveMask` is a very low-frequency field,
+           * so where they occur they occur TOGETHER — a stand of six is a
+           * cathedral and six spread over a kilometre is just six odd trees.
+           *
+           * The altitude ceiling is doing real work: nothing this big grows at
+           * elevation, so the giants belong to the valleys and the ridges stay
+           * ponderosa. That vertical zonation is most of what makes riding up
+           * out of the valley feel like going somewhere.
+           */
+          const grove = redwoodMask(x, z);
+          if (grove > 0.55 && mo > 0.42 && y < waterLevel + 210 && dense > 0.40
+              && pick < 0.10 + grove * 0.40) sp = 'redwood';
+          else if (pick < 0.042) sp = 'snag';
+          else if (mo > 0.34 && y < waterLevel + 140) sp = mix < 0.60 ? 'cottonwood' : 'scrubOak';
+          else if (y > 118 && (north > 0.32 || dense > 0.55)) sp = mix < 0.82 ? 'pine' : 'scrubOak';
+          else if (dense > 0.62) sp = mix < 0.55 ? 'pine' : 'scrubOak';
+          else if (mix < 0.26) sp = 'pine';
+          else if (mix < 0.88) sp = 'scrubOak';
           else sp = 'cottonwood';
 
           const list = KIND[sp];
@@ -483,10 +603,19 @@ export class Forest {
              of a hedge. A flat uniform draw (which is what pass 3 used) puts
              every crown on the same plane. */
           const dom = r();
-          const s = dom < 0.055
+          /* Emergents belong to OLD stands. Gating their frequency on the
+             cohort age keeps the map-wide rate at the same ~5.5% it was, but
+             concentrates the giants where they make sense — so an old block
+             has three trees standing out of it and the regen patch next door
+             has a flat top, which is the contrast that makes either read. */
+          const age = standAge(x, z);
+          const s = dom < 0.012 + age * 0.085
             ? 1.60 + r() * 1.15                      // emergent dominant
             : logSize(r(), 0.46, 1.55, 1.75);        // the rest of the stand
-          scale[n] = s * edge;
+          /* The whole cohort came up together, so it is one height class.
+             Centred on 1.0 so this redistributes canopy height rather than
+             lowering the treeline. */
+          scale[n] = s * edge * (0.74 + age * 0.52);
           yaw[n] = r() * Math.PI * 2;
           // per-tree LOD threshold jitter: a stand must not change level along
           // a visible circle centred on the camera
@@ -555,11 +684,14 @@ export class Forest {
     this.bands = new THREE.Vector2(A, B);
 
     /* --------------------------------------------------------- geometries */
-    const VARIANTS = { pine: 3, cottonwood: 3, scrubOak: 3, snag: 2 };
+    /* Two redwood variants, not three: they are rare by design, and each one is
+       the most expensive skeleton in the library (a 60 m trunk at 11 sides plus
+       forty whorls of foliage). Two is enough that a grove is not a mirror. */
+    const VARIANTS = { pine: 3, redwood: 2, cottonwood: 3, scrubOak: 3, snag: 2 };
     const kinds = [];
     this.kindIndex = {};
     let ki = 0;
-    for (const sp of ['pine', 'cottonwood', 'scrubOak', 'snag']) {
+    for (const sp of ['pine', 'redwood', 'cottonwood', 'scrubOak', 'snag']) {
       this.kindIndex[sp] = [];
       for (let v = 0; v < VARIANTS[sp]; v++) {
         const seed = (ctx.seed ^ 0x27d4eb2d) + ki * 15485863 + v * 7919;
@@ -578,6 +710,9 @@ export class Forest {
       /* linear multipliers on an atlas that is already olive — pines want to
          read dusty blue-green, not spring green */
       pine: new THREE.Color(0.74, 0.76, 0.60),
+      /* Deeper and bluer than pine: redwood foliage sits in permanent shade
+         under its own canopy and is the darkest green in the world. */
+      redwood: new THREE.Color(0.56, 0.66, 0.55),
       cottonwood: new THREE.Color(1.02, 0.98, 0.74),
       scrubOak: new THREE.Color(0.92, 0.88, 0.66),
       snag: new THREE.Color(1, 1, 1),
@@ -672,7 +807,7 @@ export class Forest {
 
     const barkMats = {}, leafMats = {};
     for (let lod = 0; lod < 2; lod++) {
-      for (const sp of ['pine', 'cottonwood', 'scrubOak', 'snag']) {
+      for (const sp of ['pine', 'redwood', 'cottonwood', 'scrubOak', 'snag']) {
         barkMats[sp + lod] = mkBark(sp, lod);
         leafMats[sp + lod] = mkLeaf(sp, lod);
       }

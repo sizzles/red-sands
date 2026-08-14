@@ -25,22 +25,37 @@ function lin(hex) {
 }
 function mul(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
 
+/*
+ * The drifter.
+ *
+ * Everything here is DARK and LOW-CHROMA, and both halves of that matter. Dark,
+ * because this is a wet world under permanent cloud and the old bleached-ochre
+ * palette was lit for a desert — a pale duster in a rainforest reads as a
+ * lantern. Low-chroma, because the one thing a survivor cannot afford is to be
+ * visible, and clothing that has been worn every day for years in the rain goes
+ * grey whatever colour it started.
+ *
+ * The exceptions are deliberate and there are two: the scarf keeps a little
+ * warmth in it, and the pack straps stay tan. A figure with no warm note
+ * anywhere on it stops reading as a person and starts reading as a silhouette
+ * prop, and against this ground a silhouette prop is exactly what you get.
+ */
 export const PAL = {
-  hat: lin(0x554a3a),
-  hatBand: lin(0x2a211a),
-  coat: lin(0x5b503a),
-  coatDark: lin(0x413928),
-  shirt: lin(0x60707d),
-  scarf: lin(0x6b3226),
-  trouser: lin(0x333941),
-  boot: lin(0x2f2219),
-  leather: lin(0x5b4630),
-  leatherDark: lin(0x3d2f21),
-  skin: lin(0xb08761),
-  skinShade: lin(0x8d6a4c),
-  hair: lin(0x3b2c1f),
-  brass: lin(0x8a6a33),
-  steel: lin(0x555a5e),
+  hat: lin(0x2f3536),          // knit watch cap, wet wool
+  hatBand: lin(0x232827),
+  coat: lin(0x3a3f3c),         // oiled canvas jacket, once green
+  coatDark: lin(0x272b29),
+  shirt: lin(0x4a4e52),
+  scarf: lin(0x6a4034),        // the one warm note
+  trouser: lin(0x2c3138),
+  boot: lin(0x241f1c),
+  leather: lin(0x53422f),      // pack straps and belt
+  leatherDark: lin(0x342a1e),
+  skin: lin(0xa8815d),
+  skinShade: lin(0x86644a),
+  hair: lin(0x2e241a),
+  brass: lin(0x7d6030),
+  steel: lin(0x4d5254),
 };
 
 export const PROP = {
@@ -176,9 +191,16 @@ export function buildHumanGeometry(rig) {
     { rings: 8, segments: 12, color: PAL.hair, rough: 0.92, sheen: 0.4 });
 
   /* ================================================================== HAT
-   * Wide-brim open-road: 0.47 m across the brim, sides curled, front dipped,
-   * a low crown with a centre crease and two finger pinches. The brim width is
-   * doing most of the silhouette work — a narrow brim reads as a bowler.
+   * A knit watch cap with a rolled cuff.
+   *
+   * This was a 0.47 m open-road hat, and the brim was — by its own comment —
+   * doing most of the silhouette work. That is exactly why it had to go: at any
+   * range where the figure is a shape rather than a model, the brim IS the
+   * character, and a wide brim says cowboy however the rest of him is dressed.
+   * The construction below is the same tube and the same sheet; the sheet's
+   * outer radius has come in from 0.238 to 0.119, which turns a brim into a
+   * cuff, and the crown's crease and finger pinches are gone because knitwear
+   * does not hold a crease.
    */
   const hatB = w('hat', 1);
   const HATY = 1.668, HATZ = -0.006;
@@ -193,12 +215,13 @@ export function buildHumanGeometry(rig) {
   ], 18), {
     radial: 28, color: PAL.hat, rough: 0.96, sheen: 0.95, capEnd: true, mtype: WOVEN,
     radiusFn: (v, u) => {
+      /* A slouch at the back instead of a crease at the front: knitted fabric
+         with nothing holding it up bags away from the crown, and the asymmetry
+         is what stops the cap reading as a swimming hat. */
       const a = u * TAU;
-      const crease = Math.exp(-Math.pow(angDist(a) / 0.38, 2));
-      const pinchL = Math.exp(-Math.pow(angDist(a - Math.PI * 0.5) / 0.34, 2));
-      const pinchR = Math.exp(-Math.pow(angDist(a + Math.PI * 0.5) / 0.34, 2));
-      const up = THREE.MathUtils.smoothstep(v, 0.24, 0.95);
-      return 1 - up * (crease * 0.24 + (pinchL + pinchR) * 0.15);
+      const slouch = Math.exp(-Math.pow(angDist(a - Math.PI) / 1.05, 2));
+      const up = THREE.MathUtils.smoothstep(v, 0.35, 1.0);
+      return 1 + up * slouch * 0.10 - up * 0.04;
     },
     colorFn: (v) => mul(PAL.hat, 0.90 + v * 0.20),
   });
@@ -217,15 +240,17 @@ export function buildHumanGeometry(rig) {
     const t = vv <= 0.5 ? vv * 2 : (1 - vv) * 2;
     const side = vv <= 0.5 ? 1 : -1;
     const inner = 0.104;
-    const outer = 0.238 + 0.010 * Math.cos(2 * a) - 0.014 * Math.cos(a);
+    const outer = 0.119 + 0.003 * Math.cos(2 * a);
     const rad = inner + (outer - inner) * t;
     const s = Math.sin(a), c = Math.cos(a);
-    // gentle side curl — overdo this and the brim reads as a pair of horns
-    const curl = 0.042 * (s * s) * Math.pow(t, 2.2);
-    const dipF = 0.034 * Math.max(c, 0) * Math.pow(t, 1.5);
-    const dipB = 0.014 * Math.max(-c, 0) * Math.pow(t, 1.6);
-    const wobble = 0.005 * Math.sin(a * 3.0 + 0.7) * Math.pow(t, 2.0);
-    const th = 0.0105 * (1 - t * 0.45);
+    /* The cuff rolls UP and outward rather than lying flat, so it catches a
+       rim light all the way round the head — which is most of what makes knit
+       read as knit at distance. */
+    const curl = 0.020 * Math.pow(t, 1.4);
+    const dipF = 0.004 * Math.max(c, 0) * Math.pow(t, 1.5);
+    const dipB = 0.002 * Math.max(-c, 0) * Math.pow(t, 1.6);
+    const wobble = 0.0022 * Math.sin(a * 5.0 + 0.7) * Math.pow(t, 2.0);
+    const th = 0.0125 * (1 - t * 0.30);
     return {
       p: [s * rad, HATY + 0.004 + curl - dipF - dipB + wobble + side * th, HATZ + c * rad],
       bones: hatB,

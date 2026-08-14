@@ -109,6 +109,12 @@ export function buildVegMaps(ctx, opts = {}) {
   }
 
   /* --------------------------- pass 2: composition + density -------------- */
+  /* Roads inits before vegetation precisely so this is available. Resolved
+     once, outside the million-iteration loop. */
+  const roadsSys = ctx.get ? ctx.get('roads') : null;
+  const roadD2 = (roadsSys && roadsSys.index)
+    ? (x, z) => roadsSys.distance2(x, z)
+    : null;
   const surf = ctx.world.getSurface;
   const splatA = terrain && terrain.splatA;
   const splatRes = terrain && terrain.splatRes ? terrain.splatRes : 0;
@@ -195,6 +201,23 @@ export function buildVegMaps(ctx, opts = {}) {
       const eG = ecoAt(eco.grass, i, j);
       grass[k] = clamp01((0.28 + 0.90 * gd) * eG * 1.42);
 
+      /*
+       * THE ROAD IS BARE.
+       *
+       * Grass instances are placed once at boot and then toroidally wrapped in
+       * the vertex shader, so their world position is not fixed and a
+       * per-instance road test is impossible — the keep-out has to live in this
+       * density field, which is the only thing the shader samples in world
+       * space. At 8 m cells the corridor is about one cell wide, which is
+       * roughly a carriageway, so a highway clears a lane of sward and a
+       * two-track barely clears anything. That is the correct outcome and it
+       * is a happy accident of the resolution rather than a design.
+       */
+      if (roadD2) {
+        const rd = Math.sqrt(roadD2(x, z));
+        grass[k] *= sstep(2.0, 9.0, rd);
+      }
+
       /* ----------------------------------------------------------- forest */
       const cl1 = N.fbm(x * S1 + 3.1, z * S1 + 9.4, 3);
       const cl2 = N.fbm(x * S2 - 71.7, z * S2 + 15.2, 3);
@@ -229,6 +252,9 @@ export function buildVegMaps(ctx, opts = {}) {
          spacing all the way to the horizon" into stands with edges. */
       const eT = ecoAt(eco.tree, i, j);
       forest[k] = clamp01((0.34 + 0.86 * fdRaw) * eT * 1.55) * (1 - wet);
+      /* Timber is cleared much wider than sward — a road needs a felled corridor
+         either side or the first storm drops a tree across it. */
+      if (roadD2) forest[k] *= sstep(5.0, 17.0, Math.sqrt(roadD2(x, z)));
 
       /* ------------------------------------------------------------ shrub */
       const sc = N.fbm(x * (1 / 96) - 200.4, z * (1 / 96) + 51.8, 3);

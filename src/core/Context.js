@@ -140,7 +140,15 @@ export function createContext({ renderer, scene, camera, canvas, quality }) {
       mode: 'onFoot',
       /** 0..1 how fast relative to sprint. */
       speed01: 0,
-      /** Reference to the horse object when mounted, else null. */
+      /**
+       * The thing you are riding when `mode === 'mounted'`, else null.
+       *
+       * Still called `horse` because it is a frozen contract field that half a
+       * dozen systems read, and renaming it would buy nothing — but what it
+       * holds is the Bike. Anything that rides is expected to publish the same
+       * surface the horse did: `state`, `yaw`, `speed01`, `renderPos`,
+       * `syncPose()` and `getSaddle()`.
+       */
       horse: null,
       /** True while the player is inside a settlement volume. */
       inTown: false,

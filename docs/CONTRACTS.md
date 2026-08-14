@@ -43,9 +43,15 @@ export class MySystem {
 }
 ```
 
-Registered ids: `procTextures timeOfDay weather terrain water vegetation scatter
-town lighting sky clouds particles physics player horse wildlife camera postfx
-audio hud`. Reach another system with `ctx.get('terrain')`.
+Registered ids: `procTextures timeOfDay weather terrain water roads vegetation
+scatter town lighting sky clouds particles physics player bike wildlife riven
+cordon garage compound
+loot camera postfx audio hud touch`. Reach another system with
+`ctx.get('terrain')`.
+
+**Init order matters for `roads` (35).** It must come after `terrain` (20) and
+before `vegetation` (40) and `scatter` (45), both of which read the network —
+vegetation to keep off it, scatter to draw it.
 
 ---
 
@@ -67,8 +73,14 @@ Full field list lives in `src/core/Context.js` — read it. Summary of ownership
 | `ctx.quality.*` | engine | everyone |
 
 `ctx.on(evt, fn)` / `ctx.emit(evt, payload)` for events. Known events:
-`ready`, `teleport`, `weatherChange`, `lightning`, `hourChange`, `footstep`,
-`mount`, `dismount`, `gunshot`.
+`ready`, `teleport`, `playerTeleported`, `weatherChange`, `lightning`,
+`hourChange`, `footstep`, `mount`, `dismount`, `mountBeat`, `gunshot`,
+`bikeStart`, `bikeStall`, `rivenHit`, `rivenKilled`, `cordonHit`, `cordonKilled`,
+`looted`, `upgraded`, `compoundCleared`, `escaped`,
+`refuelled`.
+
+`ctx.player.horse` still carries that name — it is a frozen field half a dozen
+systems read — but what it holds is the **bike**. See §4.8.
 
 ---
 
@@ -156,8 +168,35 @@ PH.removeBody(body);
 PH.raycast(origin, dir, maxDist, mask); // → hit | null
 PH.sphereCast(origin, dir, radius, maxDist);
 PH.step(dt);                        // fixed 1/60, called by its own update
+
+// --- built structure: things you can be stopped by and things you can stand on
+PH.addCollider({ shape, position, halfExtents, axis, mask, walkable, tag });
+PH.removeCollider(c);
+PH.deckAt(x, z, feetY, stepH, mask, fall);  // → highest walkable top, or -Infinity
+
+// --- ladders: regions where the controller obeys the rungs, not gravity
+PH.addLadder({ x, z, nx, nz, y0, y1, top, w, reach });
+PH.removeLadder(l);
+PH.ladderAt(x, y, z, vx, vz);       // → ladder | null
 ```
 Terrain collision is analytic against `ctx.world.getHeight`, not a mesh.
+
+**`walkable` is what makes a surface a floor and not only a wall.** A collider
+normally just pushes the capsule out in XZ; marking it walkable also makes its
+top count as ground, via `deckAt`, so wall walks, tower decks and roofs become
+places rather than scenery. Opt-in, because most solids must never be stood on —
+a boulder, a fence rail and a fuel drum are all colliders.
+
+Two rules the controller applies to walkable surfaces, both learned the hard way:
+a walkable top within `stepHeight` is a floor rather than a wall (or you can
+never climb onto it), and a walkable surface never blocks you from below (or a
+raised walkway sweeps anyone climbing toward it off whatever they are on).
+
+**Ladders are a population of their own**, not colliders: inside one, `s.climb`
+owns the character and the walking code does not run. Push toward the ladder to
+go up, pull away to come down, jump to let go. Structures emit them through
+`Builder.ladder()` so a ladder link in the circulation graph cannot exist
+without something climbable under it — see §4.5.1.
 
 ### 4.6 `particles`
 
@@ -169,7 +208,143 @@ PT.burst(name, position, count, opts);
 ```
 All particles are soft-particle depth-faded and lit by `ctx.env`.
 
-### 4.7 `audio`
+### 4.7 `bike` — THE RIDEABLE CONTRACT
+
+Anything the player can ride publishes this surface, and it is deliberately the
+one the horse published before it, so `Player`'s mount transition, mounted pose,
+camera rig and audio hooks work against any of them without a branch:
+
+```js
+const B = ctx.get('bike');
+B.state;            // { position, velocity, radius, height, grounded,
+                    //   groundNormal, maxSlopeCos, stepHeight } — as Physics wants
+B.yaw; B.speed01; B.renderPos; B.mounted; B.holdStill;
+B.syncPose(dt);     // idempotent per frame; pose before anyone reads the seat
+B.getSaddle();      // → { position, quaternion, stirrupL, stirrupR,
+                    //     bobMetres, gaitPhase, gait, speed01, freq,
+                    //     gripL, gripR, vehicle }
+B.status();         // → { fuel, running, rpm, gear, speed, speedKph, headlight }
+B.refuel(amount);   // spends one `fuel` from Loot; false if there is none
+```
+
+`stirrupL/R` are footpegs. `freq` MUST be 0 for a vehicle — Player gates its
+whole gait-rocking chain on it. `vehicle: true` switches the rider from an
+equestrian seat to a forward crouch with the hands IK'd onto `gripL/R`.
+
+### 4.8 `riven` — the infected
+
+Types are `stray` (the common runner), `skitter` (low, quadrupedal, fast) and
+`harrow` (large, slow, tough). `hit.part` is `'head'` or `'body'`.
+
+```js
+const R = ctx.get('riven');
+R.raycast(origin, dir, maxDist);   // → hit | null   (same shape as Wildlife's)
+R.applyHit(hit, damage);           // → { killed, species } | null
+R.alarm(position, radius, intensity);  // wake everything in earshot
+R.hunting;                         // how many are actively chasing, for the HUD
+R.noise;                           // how loud the player is being, 0 .. ~14
+R.stats();
+```
+
+Anything that makes a noise should call `alarm()`. The single most important
+number in the game is `R.noise`: crouching is 0.25, walking 1.0, the bike with
+the throttle open is 14.
+
+### 4.9 `cordon` — the armed faction
+
+```js
+const C = ctx.get('cordon');
+C.raycast(origin, dir, maxDist);   // → hit | null   (same shape as Riven's)
+C.applyHit(hit, damage);           // → { killed, species } | null
+C.alarm(position, radius);         // put everything in range on alert
+C.engaged;                         // how many have eyes on you, for the HUD
+C.stats();
+```
+
+Types are `trooper` (rifle, 72 m, holds ground) and `enforcer` (close, tough,
+advances). Checkpoints are sited on HIGHWAY routes only — that is deliberate and
+load-bearing: the Cordon is the price of the fast road, and taxing a logging
+spur would break the one clean trade the map offers.
+
+They sense by SIGHT where the Riven sense by SOUND, and every other rule is
+inverted to match, so the two factions cannot be answered the same way. Anything
+that adds a new enemy should pick a side of that table rather than splitting it.
+
+`Cordon._fire` alarms the Riven at 260 m — further than the player's own rifle —
+which is what makes a firefight draw the horde. `Riven.nearestTo(pos, radius)`
+exists for the Cordon to find targets without reaching into its `_agents`.
+
+### 4.10 `loot`
+
+```js
+const L = ctx.get('loot');
+L.inventory;             // { fuel, ammo, scrap, meds } — read freely
+L.nearest();             // the stash in range, or null
+L.collect(stash);        // → what was gained
+L.take(res, n);          // → false if there is not enough
+L.give(res, n);          // → how much fitted under the cap
+L.dropFrom(pos, kind);   // something died carrying something
+```
+
+`Weapon.reserve` is reconciled against `inventory.ammo` every frame by Loot —
+the weapon never learns an inventory exists and the inventory never has to
+understand a reload.
+
+### 4.10b `garage` / `compound` — progression and the ending
+
+```js
+const G = ctx.get('garage');
+G.mult('baffle');        // the multiplier a track currently supplies
+G.costOf('tank');        // scrap for the next level, or null if maxed
+G.nearest();             // the workbench in range, or null
+G.buy(track);            // spends scrap; refuses away from a bench
+G.readiness();           // 0..1 across all tracks
+
+const C = ctx.get('compound');
+C.status();              // { seen, distance, defenders, cleared, escaped }
+```
+
+Tracks are `tank economy baffle gearing tyres`. Bike reads tank/economy/gearing/
+tyres each fixed step; **Riven reads `baffle` inside `_playerNoise()`**, which is
+what makes it a stealth upgrade rather than a stat.
+
+The compound garrisons itself through `Cordon.addPost(pos, yaw, size, tag)`
+rather than growing a second soldier AI — same faction, same rules, so what the
+player learned at a highway checkpoint still applies at the last fight. Posts
+tagged `'compound'` get no roadblock built on them.
+
+There is deliberately NO experience or level system. If you are tempted to add
+one, read the header of Garage.js first.
+
+### 4.11 `roads`
+
+```js
+const R = ctx.get('roads');
+R.routes;                  // polylines, each tagged .cls .halfWidth .speed
+R.index;                   // RoadIndex — nearest(x,z) / distance2(x,z)
+R.query(x, z);             // → { on, speed, d, tx, tz }
+R.distance2(x, z);         // cheap keep-out test for bakes
+R.nearestStation();        // the station whose pumps are in range, or null
+R.usePump(station);        // fills the tank, costs the station one reserve
+R.stats();
+```
+
+`query().on` is 0 off-road and 1 on the running surface, easing out over a 1.9 m
+shoulder. `speed` is the class multiplier (highway 1.00, logging 0.86, track
+0.70) and is only meaningful where `on > 0`.
+
+**Roads plans; Scatter draws.** The ribbon is Scatter's existing streaming
+ground mesh — it takes `roads.routes` and widths straight off this system. Do
+not render a second road surface; two ribbons fight over the same z-range.
+
+**The roadbed is DRAPED, not graded.** `Terrain.addHeightOverride` was measured
+and rejected for this: `getHeight` scans overrides linearly and is the hottest
+function in the engine, so a chunked road network would put ~140 footprint tests
+on every ground query forever. The router earns the smoothness instead by
+punishing gradient quadratically. If you ever want real cuttings, index the
+override list spatially first.
+
+### 4.12 `audio`
 
 ```js
 const A = ctx.get('audio');
@@ -183,12 +358,15 @@ Everything is synthesised with WebAudio — no sample files.
 
 ## 5. Art direction
 
-The target is **late-19th-century American West, shot on film**. Reference the
-look of RDR2: not saturated, not "video-game blue". Specifically:
+The target is **the wet side of the Cascade Range, shot on film**. Overcast,
+cold, and dark. Specifically:
 
-- **Palette.** Bleached ochre, sage green, dust grey, oxidised red rock, cold
-  slate shadow. Greens are *desaturated and yellow-shifted*, never emerald.
-  Skies at midday are pale and hazy near the horizon, not deep cyan.
+- **Palette.** Near-black basalt, blue-green conifer shadow, wet duff, pale
+  pumice, and snow. Greens read green because everything is DARK, not because
+  anything is saturated — the metrics gate caps on-screen green saturation at
+  0.34 and it is right to. Rock is GREY: andesite and basalt are young and
+  barely oxidised, and the red sandstone this world used to be made of was a
+  desert mineralogy. Skies are a lid more often than they are blue.
 - **Light.** Strong directional key with genuinely soft penumbrae. Skylight fills
   shadows with *cool blue*; bounce off the ground fills with *warm ochre*.
   Golden hour is the money shot: long shadows, rim-lit dust, aerial perspective

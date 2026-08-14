@@ -12,18 +12,28 @@ import { rng } from '../core/Context.js';
  * flickering when you ride along a boundary.
  */
 
+/*
+ * The vocabulary is Pacific Northwest logging and volcanic country, with the
+ * damage laid over the top. Half the heads are things the mountains were
+ * called before (Cinder, Timberline, Obsidian, Cold Spring) and half are what
+ * they are called now (Quarantine, Ash, Widow, Silent) — because the map was
+ * named twice, once by people who lived here and once by whoever was left, and
+ * a world that has been through something should say so in its place names
+ * rather than in a cutscene.
+ */
 const HEAD = [
-  'Bitter', 'Ochre', 'Coyote', 'Rattler', 'Cinnabar', 'Saltpan', 'Widow',
-  'Hangman', 'Dry', 'Broken', 'Lonesome', 'Painted', 'Cottonwood', 'Buzzard',
-  'Silver', 'Redemption', 'Sundown', 'Chalk', 'Gallows', 'Thirsty',
+  'Cinder', 'Obsidian', 'Timberline', 'Cold Spring', 'Elk', 'Rainshadow',
+  'Black Butte', 'Marion', 'Sawtooth', 'Deadfall', 'Ash', 'Quarantine',
+  'Widow', 'Silent', 'Broken', 'Lost', 'Wolf', 'Pumice', 'Riven', 'Frozen',
 ];
 const TAIL = [
-  'Flats', 'Draw', 'Gulch', 'Basin', 'Bluff', 'Ridge', 'Fork', 'Hollow',
-  'Mesa', 'Creek', 'Wash', 'Bend', 'Rise', 'Sink', 'Pass', 'Butte',
+  'Draw', 'Hollow', 'Ridge', 'Basin', 'Fork', 'Saddle', 'Pass', 'Bench',
+  'Creek', 'Flow', 'Bend', 'Rise', 'Gap', 'Meadow', 'Cut', 'Crossing',
 ];
+/* Settlements: mill towns, ranger stations and the camps that came after. */
 const TOWNS = [
-  'Armadillo', 'Tumbleweed', 'Blackwater', 'Manzanita', 'Cholla Springs',
-  'Perdido', 'Val Verde', 'Cimarron',
+  'Copperfield', 'Iron Mike', 'Hot Springs', 'Sherman Camp', 'Diamond Lake',
+  'Old Mill', 'Cascade Bend', 'Wizard Falls',
 ];
 
 function pick(arr, r) { return arr[(r() * arr.length) | 0]; }
@@ -68,7 +78,7 @@ export class Regions {
     const forest = ctx.poi.get('forest');
     if (forest) {
       const p = forest.pos || forest;
-      add(p.x, p.z, `${pick(['Pinewood', 'Timber', 'Blackpine', 'Cedar'], r)} ${pick(['Rise', 'Stand', 'Hollow'], r)}`, 'forest', 420);
+      add(p.x, p.z, `${pick(['Douglas', 'Blackpine', 'Cedar', 'Hemlock', 'Lodgepole'], r)} ${pick(['Rise', 'Stand', 'Hollow', 'Cut'], r)}`, 'forest', 420);
     }
 
     // --- a jittered lattice over the playable square -----------------------

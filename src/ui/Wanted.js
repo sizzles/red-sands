@@ -1,10 +1,17 @@
 import * as THREE from 'three';
 
 /**
- * RED SANDS — THE LAW
+ * BROKEN ROAD — HOSTILITY
  * ============================================================================
- * Crime, witnesses, wanted level and pursuit. Owned and stepped by Player;
- * drawn (stars only) by HUD. Nothing in here touches the renderer.
+ * Witnesses, escalation and pursuit at the survivor camps. Owned and stepped by
+ * Player; drawn (the marks) by HUD. Nothing in here touches the renderer.
+ *
+ * This was the western's LAW system and the mechanic is unchanged, because the
+ * mechanic was never really about law: it is about being SEEN doing something,
+ * and a camp of armed survivors deciding you are a problem works exactly the
+ * same way a sheriff did. What changed is who is coming — there is no law left
+ * to call, only the people whose gate you just shot somebody in front of, which
+ * is why nothing here escalates beyond the district it happened in.
  *
  *   WHY IT LIVES HERE.  Killing a townsperson is not a rendering event and it
  *   is not a physics event — it is a *social* one, and the only thing that
@@ -72,7 +79,7 @@ const COOL_PER_STAR = 15;
 const ESCAPE_DIST = 130;
 /** Witness sweep rate. Nothing about this needs 60 Hz. */
 const SWEEP_HZ = 8;
-/** Metres past which a pursuing lawman gives up and goes home. */
+/** Metres past which a pursuer gives up and goes back to the camp. */
 const GIVE_UP = 95;
 
 const PART_DMG = { head: 2.4, vital: 1.15, body: 0.55, limb: 0.28 };
@@ -409,7 +416,7 @@ export class Wanted {
     this._coolT = 0;
     if (this.level > before) {
       this.starPop = 1;
-      this._notify(this.level >= 3 ? 'The law is after you' : 'You are wanted');
+      this._notify(this.level >= 3 ? 'The camp is hunting you' : 'They have marked you');
     }
   }
 
@@ -490,7 +497,7 @@ export class Wanted {
             this.bounty = 0;
             this.state = 'clear';
             this._notified = '';
-            this._notify('You are no longer wanted');
+            this._notify('They have lost you');
             this._standDown();
           }
         }
@@ -552,7 +559,7 @@ export class Wanted {
       this._whistleT = 2.5;
       const A = this.ctx.get('audio');
       if (A && A.play) A.play('whistle', { position: _p.clone(), volume: 0.9 });
-      this._notify('Lawmen are closing in');
+      this._notify('They are closing in');
     }
     void h;
   }
@@ -603,7 +610,7 @@ export class Wanted {
         continue;
       }
 
-      /* --- lawman: run us down ------------------------------------------ */
+      /* --- pursuer: run us down ----------------------------------------- */
       if (a.rsLawman) {
         const dx = p.x - a.x, dz = p.z - a.z;
         const d = Math.hypot(dx, dz) || 1;

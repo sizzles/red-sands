@@ -533,7 +533,13 @@ export class Terrain {
       uNrmRgh: { value: this.nrmArray },
       uLayerScale: { value: LAYER_SCALE.slice() },
       uLayerDetail: { value: DETAIL_SCALE.slice() },
-      uSurf: { value: new THREE.Vector4(0, 0, 430, 1.42) },
+      uSurf: { value: new THREE.Vector4(0, 0, 620, 1.42) },
+      /*
+       * Glacial snowline and its strength. 980 m puts the ice on the top ~210 m
+       * of the big cones and nowhere else, which is the proportion that makes a
+       * volcano read as a volcano rather than as a hill wearing a hat.
+       */
+      uPerma: { value: new THREE.Vector2(980, 1.0) },
       uDetailFade: { value: new THREE.Vector2(24, 420) },
       uGroundDet: { value: this.groundDetailTex },
       /* x,y = 1/tile metres (fine, mid); z = relief strength; w = fine fade far.
@@ -713,12 +719,20 @@ export class Terrain {
       /* snow is a runtime layer — mirror exactly what the shader does */
       const env = ctx.env;
       let snow = 0;
-      if (env.snowCover > 0.001) {
-        const n = getNormal(x, z, this._tmpV);
+      {
         const y = getHeight(x, z);
-        snow = clamp(env.snowCover
-          * smoothstep(0.40, 0.84, n.y)
-          * smoothstep(this.snowLine - 190, this.snowLine + 120, y), 0, 1);
+        /* Only pay for the normal if either snow layer could possibly be
+           active here — this runs per footstep and per scatter placement. */
+        if (env.snowCover > 0.001 || y > this.permaLine - 130) {
+          const n = getNormal(x, z, this._tmpV);
+          const up = smoothstep(0.40, 0.84, n.y);
+          const seasonal = env.snowCover > 0.001
+            ? env.snowCover * up * smoothstep(this.snowLine - 190, this.snowLine + 120, y)
+            : 0;
+          /* Mirrors the shader exactly: MAX, not sum. See Material.js. */
+          const perma = up * smoothstep(this.permaLine - 130, this.permaLine + 170, y);
+          snow = clamp(Math.max(seasonal, perma), 0, 1);
+        }
       }
       const k = 1 - snow;
       return {
@@ -751,7 +765,9 @@ export class Terrain {
 
     this.getHeight = getHeight;
     this.getNormal = getNormal;
-    this.snowLine = 430;
+    this.snowLine = 620;
+    /** Altitude above which snow is permanent. Mirrors the shader's uPerma.x. */
+    this.permaLine = 980;
   }
 
   /* --------------------------------------------- ground-height overrides */
@@ -1120,6 +1136,7 @@ export class Terrain {
     u.x = env.wetness;
     u.y = env.snowCover;
     u.z = this.snowLine;
+    this.uniforms.uPerma.value.set(this.permaLine, 1.0);
 
     /*
      * Puddles fill and dry on their own clock. Rain raises the water table in

@@ -13,19 +13,30 @@ import * as THREE from 'three';
  * Returns { texture, rects } where rects[name] = [u0, v0, u1, v1].
  */
 
+/*
+ * A Cascade mill town, and it was a mill town for a hundred years before any of
+ * this. The `key` names are unchanged because Buildings.js assigns boards to
+ * plots by key; only what is painted on them has moved on by a century.
+ *
+ * Nothing here is written in the past tense and nothing announces the disaster.
+ * Every board is an ordinary small-town business sign, still hanging, still
+ * advertising a haircut — and the fact that the town is empty and the ground is
+ * churned with tracks is left entirely to the player to notice. Signage that
+ * explains what happened does the work the world should be doing.
+ */
 const BOARDS = [
-  { key: 'general', text: 'GENERAL STORE', sub: 'DRY GOODS  ·  PROVISIONS', paint: '#20130c', ground: '#a98a5e', ratio: 5.0 },
-  { key: 'saloon', text: 'SALOON', sub: 'WHISKEY  ·  BEER  ·  ROOMS', paint: '#efdcb4', ground: '#6a2320', ratio: 4.4 },
-  { key: 'bank', text: 'BANK', sub: 'ASSAY  ·  EXCHANGE', paint: '#1c1b17', ground: '#b6ae95', ratio: 4.0 },
-  { key: 'hotel', text: 'HOTEL', sub: 'BEDS  ·  BATHS  ·  MEALS', paint: '#f0e2c4', ground: '#3d4a44', ratio: 4.6 },
-  { key: 'livery', text: 'LIVERY & FEED', sub: 'HORSES BOARDED', paint: '#241a10', ground: '#9c8355', ratio: 5.2 },
-  { key: 'sheriff', text: 'SHERIFF', sub: 'COUNTY OF RED SANDS', paint: '#e8dcc0', ground: '#4a4034', ratio: 4.4 },
-  { key: 'smith', text: 'BLACKSMITH', sub: 'WAGON REPAIR', paint: '#efe0bd', ground: '#43352a', ratio: 5.0 },
-  { key: 'barber', text: 'BARBER', sub: 'SHAVE  ·  HAIRCUT', paint: '#2a1c14', ground: '#c2b48c', ratio: 4.2 },
-  { key: 'gazette', text: 'GAZETTE', sub: 'PRINTING  ·  TELEGRAPH', paint: '#211d16', ground: '#ab9d7c', ratio: 4.6 },
-  { key: 'church', text: 'FIRST CHURCH', sub: 'SERVICE SUNDAY', paint: '#3a3128', ground: '#cbc3ae', ratio: 5.0 },
-  { key: 'undertaker', text: 'UNDERTAKER', sub: 'COFFINS MADE', paint: '#ded2b6', ground: '#332c26', ratio: 5.0 },
-  { key: 'stable', text: 'STABLE', sub: 'HAY  ·  GRAIN', paint: '#26190f', ground: '#a0885e', ratio: 4.2 },
+  { key: 'general', text: 'GENERAL STORE', sub: 'GROCERY  ·  HARDWARE', paint: '#20130c', ground: '#8a8f7e', ratio: 5.0 },
+  { key: 'saloon', text: 'TAVERN', sub: 'BEER  ·  POOL  ·  ROOMS', paint: '#efdcb4', ground: '#5a2d24', ratio: 4.4 },
+  { key: 'bank', text: 'CREDIT UNION', sub: 'MEMBERS SERVED', paint: '#1c1b17', ground: '#a8ac9c', ratio: 4.0 },
+  { key: 'hotel', text: 'MOTEL', sub: 'VACANCY  ·  COLOR TV', paint: '#f0e2c4', ground: '#2f4a44', ratio: 4.6 },
+  { key: 'livery', text: 'AUTO REPAIR', sub: 'TIRES  ·  TOWING', paint: '#241a10', ground: '#8d8f7c', ratio: 5.2 },
+  { key: 'sheriff', text: 'RANGER STATION', sub: 'CASCADE DISTRICT', paint: '#e8dcc0', ground: '#2f4034', ratio: 4.4 },
+  { key: 'smith', text: 'SAWMILL', sub: 'LUMBER  ·  CORDWOOD', paint: '#efe0bd', ground: '#3a352a', ratio: 5.0 },
+  { key: 'barber', text: 'DINER', sub: 'OPEN 6AM  ·  PIE', paint: '#2a1c14', ground: '#b4b28c', ratio: 4.2 },
+  { key: 'gazette', text: 'POST OFFICE', sub: 'US MAIL  ·  PARCELS', paint: '#211d16', ground: '#9d9d7c', ratio: 4.6 },
+  { key: 'church', text: 'FIRST CHURCH', sub: 'SERVICE SUNDAY', paint: '#3a3128', ground: '#c3c3ae', ratio: 5.0 },
+  { key: 'undertaker', text: 'MEDICAL CLINIC', sub: 'WALK-INS TAKEN', paint: '#ded2b6', ground: '#2c322c', ratio: 5.0 },
+  { key: 'stable', text: 'FUEL', sub: 'GAS  ·  DIESEL  ·  ICE', paint: '#26190f', ground: '#8e9068', ratio: 4.2 },
 ];
 
 /**
@@ -36,11 +47,19 @@ const BOARDS = [
  * people use rather than as a texture sample. Rendered as paper, not as board:
  * pale ground, heavy black display face, a rule, and torn/curled corners.
  */
+/*
+ * The bills are the exception to the rule above, and they are the only place in
+ * the whole town where the disaster is allowed to speak — because these are the
+ * one kind of paper that WOULD say it. They are pasted over each other in the
+ * order they were printed, and read in that order they are a timeline: an
+ * evacuation muster point, then a quarantine order, then somebody looking for
+ * a person, then a checkpoint that no longer exists. Nobody has to read them.
+ */
 const BILLS = [
-  { key: 'bill_wanted', head: 'WANTED', body: ['DEAD OR ALIVE', '$500 REWARD'], ratio: 0.72 },
-  { key: 'bill_notice', head: 'NOTICE', body: ['STOCK AUCTION', 'SATURDAY NOON'], ratio: 0.74 },
-  { key: 'bill_tonic', head: 'DR. BELL’S', body: ['TONIC', 'CURES ALL ILLS'], ratio: 0.68 },
-  { key: 'bill_stage', head: 'STAGE LINE', body: ['DAILY TO', 'ARMADILLO'], ratio: 0.76 },
+  { key: 'bill_wanted', head: 'QUARANTINE', body: ['NO ENTRY', 'BY ORDER'], ratio: 0.72 },
+  { key: 'bill_notice', head: 'EVACUATION', body: ['MUSTER POINT', 'HIGHWAY 20'], ratio: 0.74 },
+  { key: 'bill_tonic', head: 'MISSING', body: ['HAVE YOU SEEN', 'THIS WOMAN'], ratio: 0.68 },
+  { key: 'bill_stage', head: 'CHECKPOINT', body: ['4 MILES', 'NORTH'], ratio: 0.76 },
 ];
 
 function hash(i) {

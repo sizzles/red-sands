@@ -328,6 +328,15 @@ export class Lighting {
   }
 
   /**
+   * Re-author a registered light's brightness. Writing `light.intensity`
+   * yourself does not work — see LocalLights.setIntensity for why, and for the
+   * headlight it cost.
+   */
+  setLightIntensity(light, v) {
+    return this.local.setIntensity(light, v);
+  }
+
+  /**
    * Build a physically-authored campfire light rig at a world position and
    * return a handle. See the class docs for how to drive flame geometry from
    * it so the billboard, the pool and the shadows all flicker coherently.

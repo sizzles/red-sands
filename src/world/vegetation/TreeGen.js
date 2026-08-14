@@ -243,7 +243,7 @@ function cardTint(r) {
 
 /* ---------------------------------------------------------------- species */
 
-export const SPECIES = ['pine', 'cottonwood', 'scrubOak', 'snag'];
+export const SPECIES = ['pine', 'redwood', 'cottonwood', 'scrubOak', 'snag'];
 
 /**
  * `tint` is a MULTIPLIER on the bark albedo, centred near 1. The procedural
@@ -252,6 +252,9 @@ export const SPECIES = ['pine', 'cottonwood', 'scrubOak', 'snag'];
  */
 export const SPECIES_INFO = {
   pine: { bark: 'bark_pine', tint: [1.08, 0.86, 0.66], barkRough: 0.94 },
+  /* Redwood bark is the reddest thing in this world by a wide margin, and it is
+     also a foot thick and deeply fibrous — hence the highest roughness here. */
+  redwood: { bark: 'bark_pine', tint: [1.22, 0.72, 0.52], barkRough: 0.97 },
   cottonwood: { bark: 'bark_oak', tint: [1.02, 0.98, 0.90], barkRough: 0.92 },
   scrubOak: { bark: 'bark_oak', tint: [0.94, 0.86, 0.74], barkRough: 0.93 },
   snag: { bark: 'bark_birch', tint: [0.86, 0.86, 0.82], barkRough: 0.88 },
@@ -567,8 +570,132 @@ function growSnag(seed) {
   return { limbs, cards: [], H, radius: H * 0.26, species: 'snag' };
 }
 
+/**
+ * REDWOOD.
+ *
+ * The point of this tree is SCALE, and scale in a forest is not a property of
+ * one object — it is a relationship. A 62 m redwood among 20 m ponderosa reads
+ * as enormous; the same tree alone on a hill reads as a normal tree seen from
+ * closer. So everything below is arranged to keep the comparison visible:
+ *
+ *   BOLE       Two thirds of the height is clean trunk with nothing on it. That
+ *              is what a redwood actually is, and it is why the eye has to
+ *              travel to find the canopy — the empty column IS the effect. A
+ *              tree that starts branching at 30% height cannot read as tall
+ *              however many metres you give it.
+ *   TAPER      Massive butt swell (~2.6 m diameter) collapsing fast over the
+ *              first 8 m, then almost none. Cylindrical for 40 m is what makes
+ *              it read as a column rather than as a cone.
+ *   CROWN      Narrow — 12% of height in radius, against the pine's 30%. Old
+ *              redwoods are ragged spires, not domes, and a wide crown on a
+ *              tall trunk just reads as a scaled-up pine.
+ *   BRANCHES   Short, level or slightly drooping, and irregular: the golden
+ *              angle is kept but the whorls are not, because a tree this old has
+ *              lost half its limbs to storms.
+ */
+function growRedwood(seed) {
+  const r = rng(seed);
+  const limbs = [], cards = [];
+  /* 48–78 m. The upper end is a genuine landmark visible from kilometres. */
+  const H = 48 + r() * 30;
+  const lean = (r() - 0.5) * 0.035;
+  /* Phyllotactic angle. Local, because growPine keeps its own copy — this file
+     declares it per grower rather than once at module scope. */
+  const GOLDEN = 2.399963;
+
+  /* ---- the bole ------------------------------------------------------- */
+  const trunk = [];
+  const SEGS = 14;
+  for (let i = 0; i <= SEGS; i++) {
+    const t = i / SEGS;
+    /* Butt swell: a steep exponential over the first ~12% of height, then a
+       long slow taper. Modelled as the sum of the two, because that is
+       literally what the trunk is — a buttress bolted onto a column. */
+    const swell = Math.pow(1 - Math.min(1, t / 0.14), 2.2) * 0.62;
+    const column = (1 - t * 0.72);
+    const rad = (0.68 * column + swell) * (0.85 + r() * 0.06);
+    const wob = (r() - 0.5) * 0.05 * (1 - t);
+    trunk.push({
+      p: new THREE.Vector3(
+        Math.sin(t * 2.1 + lean * 9) * H * lean + wob,
+        t * H,
+        Math.cos(t * 1.7) * H * lean * 0.6 + wob,
+      ),
+      r: rad,
+    });
+  }
+  limbs.push({
+    pts: trunk, sides0: 11, sides1: 7, uScale: 2.4, vScale: 5.0, phase: r(),
+    flex: 0.02, rank: 0,
+  });
+
+  /* ---- crown ---------------------------------------------------------- */
+  const start = 0.62 + r() * 0.08;          // nothing below two thirds
+  const whorls = 16 + ((r() * 8) | 0);
+  let ang = r() * 6.2831;
+  for (let w = 0; w < whorls; w++) {
+    const t = start + (1 - start) * Math.pow((w + r() * 0.6) / whorls, 0.88);
+    if (t > 0.995) break;
+    const f = t * (trunk.length - 1);
+    const i0 = Math.min(trunk.length - 2, f | 0);
+    const origin = trunk[i0].p.clone().lerp(trunk[i0 + 1].p, f - i0);
+    /* Storm damage: a third of the whorls are simply missing. */
+    if (r() < 0.28) continue;
+    const nb = 2 + ((r() * 3) | 0);
+    const shrink = Math.pow(1 - (t - start) / (1 - start), 0.5);
+    const len = H * (0.030 + 0.085 * shrink);
+    for (let b = 0; b < nb; b++) {
+      ang += GOLDEN + (r() - 0.5) * 0.8;
+      const a2 = ang;
+      const drop = -0.02 - 0.30 * (1 - t) + r() * 0.14;
+      const dir = new THREE.Vector3(Math.cos(a2), drop, Math.sin(a2)).normalize();
+      const ph = r();
+      const bl = len * (0.7 + r() * 0.6);
+      const pts = limbPoints(origin, dir, bl, H * 0.0022 * shrink + 0.045, H * 0.0006,
+        3, new THREE.Vector3(0, -0.30, 0), 0.06, r);
+      limbs.push({
+        pts, sides0: 5, sides1: 3, uScale: 1.6, vScale: 1.35, phase: ph,
+        flex: 0.16 + 0.30 * t, rank: 1,
+      });
+
+      /* Foliage sprays. Redwood foliage hangs in flat fronds off the underside
+         of the branch, so the cards are pushed DOWN off the limb rather than
+         wrapped around it. */
+      const nCards = 9 + ((r() * 5) | 0);
+      const bDir = pts[pts.length - 1].p.clone().sub(pts[0].p).normalize();
+      for (let k = 0; k < nCards; k++) {
+        const u = (k + r()) / nCards;
+        const fr = 0.20 + 0.80 * Math.pow(u, 0.6);
+        const pi = Math.min(pts.length - 1, Math.round(fr * (pts.length - 1)));
+        const p = pts[pi].p;
+        const roll = r() * 6.2831;
+        const jr = bl * 0.16 * (0.3 + r());
+        const jx = Math.cos(roll) * jr, jz = Math.sin(roll) * jr;
+        const jy = -bl * 0.10 * r();
+        const sz = Math.min(2.1, Math.max(0.6, bl * 0.30)) * (0.75 + r() * 0.5);
+        const px = p.x + jx, py = p.y + jy, pz = p.z + jz;
+        const out = new THREE.Vector3(jx, 0.10 + r() * 0.3, jz).normalize();
+        const along = bDir.clone()
+          .addScaledVector(new THREE.Vector3(Math.cos(roll), -0.35, Math.sin(roll)),
+            0.5 + r() * 0.6)
+          .normalize();
+        cards.push({
+          x: px, y: py, z: pz,
+          w: sz * 1.15, h: sz, out, along,
+          tile: [LEAF_TILES.pineA, LEAF_TILES.pineB, LEAF_TILES.pineC][(r() * 3) | 0],
+          ao: (0.30 + 0.70 * Math.pow(t, 0.6)) * (0.40 + 0.60 * fr),
+          phase: ph, flex: 0.55 + 0.45 * t, tint: cardTint(r), rank: r(),
+          flip: r() < 0.5,
+        });
+      }
+    }
+  }
+  return { limbs, cards, H, radius: H * 0.12, species: 'redwood' };
+}
+
 const GROWERS = {
-  pine: growPine, cottonwood: growCottonwood, scrubOak: growScrubOak, snag: growSnag,
+  pine: growPine, redwood: growRedwood, cottonwood: growCottonwood,
+  scrubOak: growScrubOak, snag: growSnag,
 };
 
 /* -------------------------------------------------------------- emission */

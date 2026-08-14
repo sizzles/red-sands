@@ -268,7 +268,9 @@ export class Weapon {
      * no reason. */
     this._holdT = 99;
     this.ammo = 8;
-    this.capacity = 8;
+    /* Base tube. The live figure is a getter below, because the gunsmith can
+       lengthen it mid-run and every read of `capacity` has to see that. */
+    this.baseCapacity = 8;
     this.reserve = 40;
 
     this.cycle = 0;                  // 0..1 lever throw
@@ -395,6 +397,12 @@ export class Weapon {
 
   /** True while the sights are up — CameraRig and HUD both key off this. */
   get aiming() { return this.aim01 > 0.02; }
+  /** Rounds the tube holds, including the gunsmith's work. */
+  get capacity() {
+    const G = this.ctx.get('gunsmith');
+    return Math.round(this.baseCapacity * (G ? G.mult('tube') : 1));
+  }
+
   get busy() { return this._cycleT >= 0 || this._reloadT >= 0; }
 
   reload() {
@@ -447,8 +455,11 @@ export class Weapon {
     if (this._reloadT >= 0) {
       const prev = this._reloadT;
       this._reloadT += h;
-      // one round every 0.28 s, thumbed into the loading gate
-      const step = 0.28;
+      /* One round every 0.28 s, thumbed into the loading gate — scaled by the
+         gunsmith's work on it. This is the longest window of helplessness in
+         the game, so it is the one worth being able to shorten. */
+      const G = this.ctx.get('gunsmith');
+      const step = 0.28 * (G ? G.mult('reload') : 1);
       const nBefore = Math.floor(prev / step), nAfter = Math.floor(this._reloadT / step);
       for (let i = nBefore; i < nAfter; i++) {
         if (this.ammo < this.capacity && this.reserve > 0) {
@@ -668,7 +679,12 @@ export class Weapon {
     const rand = this.rand;
     // Spread grows with how far off the sights the sway has drifted, and a lot
     // more from the hip. A rifle fired from the waist should miss.
-    const base = 0.0011 + (1 - this.aim01) * 0.028;
+    /* Sights work on the HIP term specifically: the aimed cone is already
+       tight enough that halving it changes nothing you could notice, and the
+       shot that actually matters is the one taken with something on you. */
+    const GS = this.ctx.get('gunsmith');
+    const sight = GS ? GS.mult('sights') : 1;
+    const base = 0.0011 + (1 - this.aim01) * 0.028 * sight;
     const spread = base + (this.sway01 || 0) * 0.0032;
     const a1 = rand() * Math.PI * 2;
     const a2 = Math.sqrt(rand()) * spread;
@@ -727,7 +743,11 @@ export class Weapon {
       direction: _dir.clone(),
       weapon: 'rifle',
       volume: 1,
-      loudness: 1,
+      /* The baffled barrel. Everything that reacts to a shot scales its radius
+         by this, so the upgrade changes how the world answers rather than what
+         the gun does — the same trade the bike's exhaust makes. */
+      loudness: this.ctx.get('gunsmith')
+        ? this.ctx.get('gunsmith').mult('report') : 1,
     });
     return true;
   }
@@ -751,6 +771,26 @@ export class Weapon {
     let animal = null;
     if (W && W.raycastAnimals) animal = W.raycastAnimals(origin, dir, MAX);
 
+    /*
+     * The infected are resolved on the same footing as game animals — nearest
+     * hit along the ray wins — rather than as a special case that pre-empts
+     * everything else. That matters: a runner between you and a deer should
+     * eat the round, and so should a deer between you and a runner.
+     */
+    const RV = ctx.get('riven');
+    let riv = null;
+    if (RV && RV.raycast) riv = RV.raycast(origin, dir, MAX);
+
+    /* The Cordon resolves on exactly the same footing — nearest hit along the
+       ray wins. A Riven that wanders between you and a checkpoint eats the
+       round, which is both correct and occasionally very useful.
+       Only the RAY is cast here; the comparison waits until `ground` exists
+       below, because reading it up here is a temporal-dead-zone ReferenceError
+       that no build step catches and that fires on the first shot. */
+    const CD = ctx.get('cordon');
+    let cor = null;
+    if (CD && CD.raycast) cor = CD.raycast(origin, dir, MAX);
+
     const law = this.player.wanted;
     let npc = null;
     if (law) {
@@ -763,7 +803,35 @@ export class Weapon {
       try { ground = T.raycast(origin, dir, MAX); } catch (e) { ground = null; }
     }
 
-    // nearest of the three wins
+    // nearest of the five wins
+    if (cor && riv && riv.distance < cor.distance) cor = null;
+    if (cor && animal && animal.distance < cor.distance) cor = null;
+    if (cor && ground && ground.distance < cor.distance) cor = null;
+    if (cor && npc && npc.distance < cor.distance) cor = null;
+    if (cor) {
+      const res = CD.applyHit(cor, 1);
+      this.lastShot = {
+        hit: true, cordon: true, species: cor.species, part: cor.part,
+        killed: !!(res && res.killed), distance: cor.distance,
+        point: cor.point.clone(),
+      };
+      this._impact(cor, res);
+      return;
+    }
+    if (riv && cor && cor.distance < riv.distance) riv = null;
+    if (riv && animal && animal.distance < riv.distance) riv = null;
+    if (riv && ground && ground.distance < riv.distance) riv = null;
+    if (riv && npc && npc.distance < riv.distance) riv = null;
+    if (riv) {
+      const res = RV.applyHit(riv, 1);
+      this.lastShot = {
+        hit: true, riven: true, species: riv.species, part: riv.part,
+        killed: !!(res && res.killed), distance: riv.distance,
+        point: riv.point.clone(),
+      };
+      this._impact(riv, res);
+      return;
+    }
     if (npc && animal && animal.distance < npc.distance) npc = null;
     if (npc && ground && ground.distance < npc.distance) npc = null;
     if (npc) {
